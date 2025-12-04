@@ -1,0 +1,57 @@
+/*  Estilos generales  */
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-image: url(https://www.jflconsultinggroup.com/wp-content/uploads/2023/12/jflconsulting-banner-finanzas.jpg);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+}
+
+/* Capa de opacidad oscura sobre el fondo */
+#root {
+  width: 100%;
+  min-height: 100vh;
+  background-color: rgba(0, 0, 0, 0.6); /* Fondo oscuro translúcido */
+  overflow: hidden;
+}
+
+/*  menú  */
+li {
+  margin-bottom: 18px;
+}
+
+li a {
+  color: #d2dae2;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
+/*  Artículos / secciones dentro de listas  */
+ul article {
+  display: flex;
+  gap: 10px;
+}
+
+article {
+  margin-bottom: 30px;
+}
+
+/*  Animación para secciones que aparezcan con transición  */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.6s ease-out;
+}
