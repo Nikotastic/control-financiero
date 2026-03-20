@@ -2,16 +2,21 @@ import React, { useState } from "react";
 import { collection, addDoc } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
 import { Timestamp } from "firebase/firestore";
+import { useAuth } from "../context/AuthContext";
 
 // Lista de categorías que se usan si el tipo es "Gasto"
-const CATEGORIAS = ["Comida", "Transporte", "Hogar", "Educación", "Ocio"];
+const CATEGORIAS = [
+  "Vivienda", "Alimentación", "Transporte", "Servicios", "Salud", 
+  "Educación", "Entretenimiento", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
+];
 
 const AgregarMovimiento = () => {
+  const { user } = useAuth();
   // Estados del formulario
   const [descripcion, setDescripcion] = useState("");
   const [tipo, setTipo] = useState("Ingreso"); 
   const [monto, setMonto] = useState("");
-  const [categoria, setCategoria] = useState("Comida");
+  const [categoria, setCategoria] = useState("Vivienda");
 
   // Función para guardar el movimiento en Firestore
   const guardarMovimiento = async () => {
@@ -23,6 +28,7 @@ const AgregarMovimiento = () => {
         monto: parseFloat(monto), 
         fecha: Timestamp.fromDate(new Date()), 
         categoria: tipo === "Gasto" ? categoria : null, // Solo si es gasto
+        uid: user.uid,
       });
 
       console.log("Movimiento guardado");

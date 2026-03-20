@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-// Importamos íconos desde lucide-react
 import {
   House,
   CircleDollarSign,
@@ -9,80 +8,97 @@ import {
   TrendingUp,
   Settings,
   Menu,
+  LogOut,
 } from "lucide-react";
-// Importamos Link para navegación interna sin recarga de página
 import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 export default function Navegation() {
   const [mostrarMenu, setMostrarMenu] = useState(true);
+  const { user, logout } = useAuth();
 
-  // Función que cambia el estado del menú 
-  const toggleMenu = () => {
-    setMostrarMenu(!mostrarMenu);
-  };
+  const toggleMenu = () => setMostrarMenu(!mostrarMenu);
 
   return (
-    // Contenedor principal del menú lateral
     <nav
-      className={`text-white ${
-        mostrarMenu ? "w-44" : "w-16"
-      } transition-all duration-300 overflow-hidden h-[100vh] p-4 rounded-r-2xl`}
+      className={`nav-sidebar ${mostrarMenu ? "nav-expanded" : "nav-collapsed"}`}
     >
-      <div className="flex justify-between items-center mb-6 border-b border-[#485460] pb-2">
-        <h2 className="text-[1.4rem] font-semibold whitespace-nowrap">
-          {mostrarMenu && "Finanzas"}
-        </h2>
-        <Menu className="w-6 h-6 cursor-pointer" onClick={toggleMenu} />
+      {/* Cabecera con logo + toggle */}
+      <div className="nav-header">
+        <h2 className="nav-brand">{mostrarMenu && "Finanzas"}</h2>
+        <button className="nav-toggle" onClick={toggleMenu} aria-label="Menú">
+          <Menu size={20} />
+        </button>
       </div>
 
-      {/* Lista de enlaces de navegación */}
-      <ul className="list-none space-y-4">
-        <li>
-          {/* Enlace a la página principal */}
-          <Link to="/" className="flex items-center gap-2">
-            <House />
-            {mostrarMenu && <p>Panel Principal</p>}
-          </Link>
-        </li>
-        <li>
-          <Link to="/ingresos" className="flex items-center gap-2">
-            <CircleDollarSign />
-            {mostrarMenu && <p>Ingresos</p>}
-          </Link>
-        </li>
-        <li>
-          <Link to="/gastos" className="flex items-center gap-2">
-            <HandCoins />
-            {mostrarMenu && <p>Gastos</p>}
-          </Link>
-        </li>
-        <li>
-          <a href="/presupuesto" className="flex items-center gap-2">
-            <Receipt />
-            {mostrarMenu && <p>Presupuesto</p>}
-          </a>
-        </li>
-        <li>
-          <a href="/reportes" className="flex items-center gap-2">
-            <FlagTriangleRight />
-            {mostrarMenu && <p>Reportes</p>}
-          </a>
-        </li>
-        <li>
-          <a href="/inversiones" className="flex items-center gap-2">
-            <TrendingUp />
-            {mostrarMenu && <p>Inversiones</p>}
-          </a>
-        </li>
+      {/* Avatar del usuario */}
+      {user && (
+        <div className="nav-user">
+          <img
+            src={user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || "U")}&background=00c896&color=fff`}
+            alt="avatar"
+            className="nav-avatar"
+          />
+          {mostrarMenu && (
+            <div className="nav-user-info">
+              <p className="nav-user-name">{user.displayName?.split(" ")[0]}</p>
+              <p className="nav-user-email">{user.email}</p>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Enlace a configuración, ubicado al final del menú */}
-        <li className={`mt-[37vh]`}>
-          <a href="/configuracion" className="flex items-center gap-2">
-            <Settings />
-            {mostrarMenu && <p>Configuración</p>}
-          </a>
+      {/* Links */}
+      <ul className="nav-links">
+        <li>
+          <Link to="/" className="nav-link">
+            <House size={20} />
+            {mostrarMenu && <span>Panel Principal</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/ingresos" className="nav-link">
+            <CircleDollarSign size={20} />
+            {mostrarMenu && <span>Ingresos</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/gastos" className="nav-link">
+            <HandCoins size={20} />
+            {mostrarMenu && <span>Gastos</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/presupuesto" className="nav-link">
+            <Receipt size={20} />
+            {mostrarMenu && <span>Presupuesto</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/reportes" className="nav-link">
+            <FlagTriangleRight size={20} />
+            {mostrarMenu && <span>Reportes</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/inversiones" className="nav-link">
+            <TrendingUp size={20} />
+            {mostrarMenu && <span>Inversiones</span>}
+          </Link>
         </li>
       </ul>
+
+      {/* Footer: configuración + cerrar sesión */}
+      <div className="nav-footer">
+        <Link to="/configuracion" className="nav-link">
+          <Settings size={20} />
+          {mostrarMenu && <span>Configuración</span>}
+        </Link>
+        <button className="nav-link nav-logout" onClick={logout} id="btn-logout">
+          <LogOut size={20} />
+          {mostrarMenu && <span>Cerrar sesión</span>}
+        </button>
+      </div>
     </nav>
   );
 }
