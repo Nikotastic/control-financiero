@@ -1,273 +1,238 @@
 import React, { useEffect, useState } from "react";
 import {
-  collection,
-  doc,
-  getDoc,
-  setDoc,
-  query,
-  onSnapshot,
-  where,
-  addDoc,
+  collection, doc, getDoc, setDoc, query, onSnapshot, where, addDoc, deleteDoc, updateDoc
 } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
-import Navegation from "../Components/Navegation";
+import { Target, Plus, Pencil, Trash2, X, Check } from "lucide-react";
 
-// Función auxiliar para obtener el mes actual en formato YYYY-MM
+import { useAuth } from "../context/AuthContext";
+
 const obtenerMesActual = () => {
   const now = new Date();
-  const mes = String(now.getMonth() + 1).padStart(2, "0");
-  return `${now.getFullYear()}-${mes}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 };
 
-// Categorías predefinidas para presupuestos por categoría
-const CATEGORIAS = ["Comida", "Transporte", "Hogar", "Educación", "Ocio"];
+const CATEGORIAS = [
+  "Vivienda", "Alimentación", "Transporte", "Servicios", "Salud", 
+  "Educación", "Entretenimiento", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
+];
 
 export default function Presupuesto() {
-  // Estados generales
+  const { user } = useAuth();
   const [montoPresupuesto, setMontoPresupuesto] = useState("");
   const [presupuestoActual, setPresupuestoActual] = useState(null);
   const [totalGastos, setTotalGastos] = useState(0);
   const [totalIngresos, setTotalIngresos] = useState(0);
   const [mensaje, setMensaje] = useState("");
-
-  // Estados para presupuesto por categoría
-  const [categoria, setCategoria] = useState("Comida");
+  const [categoria, setCategoria] = useState("Vivienda");
   const [montoCategoria, setMontoCategoria] = useState("");
   const [presupuestosCategoria, setPresupuestosCategoria] = useState([]);
   const [gastosPorCategoria, setGastosPorCategoria] = useState({});
-
+  const [editandoId, setEditandoId] = useState(null);
+  const [editMontoCategoria, setEditMontoCategoria] = useState("");
   const mesActual = obtenerMesActual();
 
-  // Obtener presupuesto general del mes actual
   useEffect(() => {
-    const docRef = doc(db, "presupuesto", mesActual);
-    getDoc(docRef).then((docSnap) => {
-      if (docSnap.exists()) {
-        setPresupuestoActual(docSnap.data().monto);
-      }
+    if (!user?.uid) return;
+    getDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`)).then((snap) => {
+      if (snap.exists()) setPresupuestoActual(snap.data().monto);
     });
-  }, [mesActual]);
+  }, [mesActual, user.uid]);
 
-  // Escuchar todos los movimientos del mes actual (ingresos y gastos)
   useEffect(() => {
-    const q = query(collection(db, "movimientos"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const movimientos = snapshot.docs
-        .map((doc) => doc.data())
-        .filter((mov) => {
-          if (!mov.fecha || !mov.tipo) return false;
-          const fecha = new Date(mov.fecha.seconds * 1000);
-          const mesDoc = `${fecha.getFullYear()}-${String(
-            fecha.getMonth() + 1
-          ).padStart(2, "0")}`;
-          return mesDoc === mesActual;
-        });
-
-      // Calcular totales
-      const ingresos = movimientos
-        .filter((m) => m.tipo === "Ingreso")
-        .reduce((acc, m) => acc + m.monto, 0);
-
-      const gastos = movimientos
-        .filter((m) => m.tipo === "Gasto")
-        .reduce((acc, m) => acc + m.monto, 0);
-
-      // Agrupar gastos por categoría
-      const agrupados = {};
-      movimientos.forEach((m) => {
-        if (m.tipo === "Gasto" && m.categoria) {
-          agrupados[m.categoria] = (agrupados[m.categoria] || 0) + m.monto;
-        }
+    if (!user?.uid) return;
+    const unsub = onSnapshot(query(collection(db, "movimientos"), where("uid", "==", user.uid)), (snap) => {
+      const movs = snap.docs.map((d) => d.data()).filter((m) => {
+        if (!m.fecha || !m.tipo) return false;
+        const f = new Date(m.fecha.seconds * 1000);
+        return `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}` === mesActual;
       });
-
-      // Actualizar estados
-      setTotalIngresos(ingresos);
-      setTotalGastos(gastos);
-      setGastosPorCategoria(agrupados);
+      setTotalIngresos(movs.filter((m) => m.tipo === "Ingreso").reduce((a, m) => a + m.monto, 0));
+      setTotalGastos(movs.filter((m) => m.tipo === "Gasto").reduce((a, m) => a + m.monto, 0));
+      const agr = {};
+      movs.forEach((m) => { if (m.tipo === "Gasto" && m.categoria) agr[m.categoria] = (agr[m.categoria] || 0) + m.monto; });
+      setGastosPorCategoria(agr);
     });
+    return () => unsub();
+  }, [mesActual, user.uid]);
 
-    return () => unsubscribe(); // Cleanup
-  }, [mesActual]);
-
-  // Obtener presupuestos por categoría para el mes actual
   useEffect(() => {
-    const q = query(
-      collection(db, "presupuestos_categoria"),
-      where("mes", "==", mesActual)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const datos = snapshot.docs.map((doc) => doc.data());
-      setPresupuestosCategoria(datos);
+    if (!user?.uid) return;
+    const unsub = onSnapshot(query(collection(db, "presupuestos_categoria"), where("uid", "==", user.uid)), (snap) => {
+      const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setPresupuestosCategoria(all.filter((item) => item.mes === mesActual));
     });
+    return () => unsub();
+  }, [mesActual, user.uid]);
 
-    return () => unsubscribe();
-  }, [mesActual]);
-
-  // Guardar o actualizar presupuesto mensual general
   const guardarPresupuesto = async () => {
     if (!montoPresupuesto || isNaN(montoPresupuesto)) return;
-    try {
-      const monto = parseFloat(montoPresupuesto);
-      await setDoc(doc(db, "presupuesto", mesActual), { monto });
-      setPresupuestoActual(monto);
-      setMensaje("✅ Presupuesto guardado");
-      setTimeout(() => setMensaje(""), 2000);
-      setMontoPresupuesto("");
-    } catch (error) {
-      console.error("Error al guardar presupuesto:", error);
-    }
+    const monto = parseFloat(montoPresupuesto);
+    await setDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`), { monto, uid: user.uid });
+    setPresupuestoActual(monto);
+    setMensaje("Presupuesto guardado");
+    setTimeout(() => setMensaje(""), 2500);
+    setMontoPresupuesto("");
   };
 
-  // Agregar presupuesto por categoría
+  const eliminarPresupuesto = async () => {
+    try {
+      await deleteDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`));
+      setPresupuestoActual(null);
+      setMensaje("Presupuesto eliminado");
+      setTimeout(() => setMensaje(""), 2500);
+    } catch (e) { console.error(e); }
+  };
+
   const agregarPresupuestoCategoria = async () => {
     if (!montoCategoria || isNaN(montoCategoria)) return;
-    try {
-      await addDoc(collection(db, "presupuestos_categoria"), {
-        mes: mesActual,
-        categoria,
-        monto: parseFloat(montoCategoria),
-      });
-      setMontoCategoria("");
-    } catch (error) {
-      console.error("Error al guardar categoría:", error);
-    }
+    await addDoc(collection(db, "presupuestos_categoria"), {
+      mes: mesActual, categoria, monto: parseFloat(montoCategoria), uid: user.uid,
+    });
+    setMontoCategoria("");
   };
 
-  // Cálculos para barra de progreso general
-  const balance = totalIngresos - totalGastos;
-  const usado = presupuestoActual !== null ? presupuestoActual - balance : 0;
-  const porcentaje =
-    presupuestoActual !== null && presupuestoActual > 0
-      ? Math.min((usado / presupuestoActual) * 100, 100)
-      : 0;
+  const eliminarPresupuestoCategoria = async (id) => {
+    try { await deleteDoc(doc(db, "presupuestos_categoria", id)); }
+    catch (e) { console.error(e); }
+  };
 
-  const estado =
-    porcentaje >= 100
-      ? `❌ Te pasaste por $${(usado - presupuestoActual).toFixed(2)}`
-      : porcentaje >= 80
-      ? `⚠️ Has alcanzado el 80% del presupuesto`
-      : `✅ Te quedan $${(presupuestoActual - usado).toFixed(2)}`;
+  const iniciarEdicion = (item) => {
+    setEditandoId(item.id);
+    setEditMontoCategoria(item.monto);
+  };
+
+  const guardarEdicion = async (id) => {
+    if (!editMontoCategoria || isNaN(editMontoCategoria)) return;
+    try {
+      await updateDoc(doc(db, "presupuestos_categoria", id), {
+        monto: parseFloat(editMontoCategoria)
+      });
+      setEditandoId(null);
+    } catch (e) { console.error(e); }
+  };
+
+  const usado = totalGastos;
+  let pct = 0;
+  if (presupuestoActual > 0) {
+    pct = Math.min((usado / presupuestoActual) * 100, 100);
+  } else if (usado > 0) {
+    pct = 100; // Si no hay presupuesto (0) pero ya hay gastos, estás excedido.
+  }
+
+  const barColor = pct >= 100 ? "var(--red)" : pct >= 80 ? "var(--orange)" : "var(--green)";
+
+  let estadoText = "";
+  if (presupuestoActual === null || presupuestoActual === 0) {
+    estadoText = usado > 0 ? `Gastaste $${usado} sin un presupuesto.` : "Ingresa un presupuesto para empezar";
+  } else if (usado > presupuestoActual) {
+    estadoText = `Excedido por $${(usado - presupuestoActual).toFixed(2)}`;
+  } else if (usado === presupuestoActual) {
+    estadoText = "Presupuesto agotado ($0.00 disponible)";
+  } else if (pct >= 80) {
+    estadoText = `Alerta: ${(pct).toFixed(0)}% del presupuesto usado`;
+  } else {
+    estadoText = `Disponible: $${(presupuestoActual - usado).toFixed(2)}`;
+  }
 
   return (
-    <div className="layout flex h-[100vh]">
-      {/* Navegación lateral */}
-      <aside className="sidebar sticky top-0 h-screen w-[220px] bg-black text-white p-8 rounded-r-[20px] shadow-lg z-20">
-        <Navegation />
-      </aside>
+    <div className="page-content">
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Presupuesto</h2>
+          <p className="page-subtitle">Gestiona tu presupuesto mensual — {mesActual}</p>
+        </div>
+      </div>
 
-      {/* Contenido principal */}
-      <main className="main-content flex flex-1 flex-col items-center pt-8 px-6 overflow-auto text-white">
-        <header className="text-4xl font-bold mb-6">Presupuesto</header>
-
-        {/* Sección Presupuesto Mensual */}
-        <section className="bg-[#1e272e] w-full max-w-md p-6 rounded-xl shadow-md text-white mb-6">
-          <h2 className="text-xl font-semibold mb-4">
-            Presupuesto mensual ({mesActual})
-          </h2>
-
-          <input
-            className="w-full p-2 mb-2 rounded bg-gray-700"
-            type="number"
-            placeholder="Monto mensual"
-            value={montoPresupuesto}
-            onChange={(e) => setMontoPresupuesto(e.target.value)}
-          />
-          <button
-            onClick={guardarPresupuesto}
-            className="w-full p-2 bg-blue-600 hover:bg-blue-700 rounded"
-          >
-            Guardar Presupuesto
-          </button>
-
-          {mensaje && <p className="mt-2 text-green-400">{mensaje}</p>}
-
-          {/* Barra de progreso y estado */}
-          {presupuestoActual !== null && (
-            <div className="mt-6">
-              <p className="text-sm text-gray-300 mb-2">
-                Ingresos: <span className="text-green-400">${totalIngresos}</span> | Gastos:{" "}
-                <span className="text-red-400">${totalGastos}</span>
-              </p>
-              <div className="w-full h-4 bg-gray-600 rounded">
-                <div
-                  className={`h-4 rounded ${
-                    porcentaje < 80
-                      ? "bg-green-500"
-                      : porcentaje < 100
-                      ? "bg-yellow-500"
-                      : "bg-red-500"
-                  }`}
-                  style={{ width: `${porcentaje}%`, transition: "width 0.4s" }}
-                />
-              </div>
-              <p className="mt-2 text-sm">{estado}</p>
-            </div>
-          )}
-        </section>
-
-        {/* Sección Presupuesto por Categoría */}
-        <section className="bg-[#1e272e] w-full max-w-md p-6 rounded-xl shadow-md text-white">
-          <h2 className="text-xl font-semibold mb-4">Presupuesto por categoría</h2>
-
-          <div className="flex gap-2 mb-3">
-            <select
-              className="flex-1 p-2 rounded bg-gray-700"
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-            >
-              {CATEGORIAS.map((cat) => (
-                <option key={cat}>{cat}</option>
-              ))}
-            </select>
-            <input
-              className="flex-1 p-2 rounded bg-gray-700"
-              type="number"
-              placeholder="Monto"
-              value={montoCategoria}
-              onChange={(e) => setMontoCategoria(e.target.value)}
-            />
+      <div className="presupuesto-grid">
+        {/* Presupuesto general */}
+        <div className="card">
+          <h3 className="card-title"><Target size={18} /> Presupuesto mensual</h3>
+          <div className="form-stack">
+            <input className="field" type="number" placeholder="Monto mensual ($)" value={montoPresupuesto} onChange={(e) => setMontoPresupuesto(e.target.value)} />
+            <button className="btn-primary" onClick={guardarPresupuesto}>Guardar</button>
+            {presupuestoActual !== null && (
+              <button className="btn-icon-danger" onClick={eliminarPresupuesto} title="Quitar presupuesto mensual">
+                <Trash2 size={16} /> Quitar presupuesto
+              </button>
+            )}
+            {mensaje && <p className={mensaje.includes("eliminado") ? "msg-error" : "msg-success"}>{mensaje}</p>}
           </div>
 
-          <button
-            onClick={agregarPresupuestoCategoria}
-            className="w-full p-2 bg-purple-600 hover:bg-purple-700 rounded"
-          >
-            Agregar Categoría
-          </button>
+          {presupuestoActual !== null && (
+            <div className="budget-status">
+              <div className="budget-stats">
+                <span>Ingresos: <strong className="amount-green">${totalIngresos.toLocaleString()}</strong></span>
+                <span>Gastos: <strong className="amount-red">${totalGastos.toLocaleString()}</strong></span>
+              </div>
+              <div className="progress-bar-bg">
+                <div className="progress-bar-fill" style={{ width: `${pct}%`, background: barColor }} />
+              </div>
+              <p className="budget-estado" style={{ color: barColor }}>{estadoText}</p>
+              <p className="budget-pct">{pct.toFixed(0)}% del presupuesto utilizado</p>
+            </div>
+          )}
+        </div>
 
-          {/* Lista de categorías con barra de uso */}
-          <div className="mt-6 space-y-4">
+        {/* Presupuesto por categoría */}
+        <div className="card">
+          <h3 className="card-title"><Plus size={18} /> Por categoría</h3>
+          <div className="form-row">
+            <select className="field" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
+              {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
+            </select>
+            <input className="field" type="number" placeholder="Monto ($)" value={montoCategoria} onChange={(e) => setMontoCategoria(e.target.value)} />
+            <button className="btn-primary" onClick={agregarPresupuestoCategoria}>Agregar</button>
+          </div>
+
+          <div className="category-list">
+            {presupuestosCategoria.length === 0 && <p className="empty-state">Sin categorías definidas.</p>}
             {presupuestosCategoria.map((item) => {
               const gasto = gastosPorCategoria[item.categoria] || 0;
-              const porcentaje = Math.min((gasto / item.monto) * 100, 100);
-              const restante = item.monto - gasto;
+              const p = Math.min((gasto / item.monto) * 100, 100);
+              const c = p >= 100 ? "#f85a5a" : p >= 80 ? "#ff9f43" : "#00c896";
               return (
-                <div key={item.categoria}>
-                  <p className="font-medium mb-1">{item.categoria}</p>
-                  <div className="w-full h-3 bg-gray-700 rounded">
-                    <div
-                      className={`h-3 rounded ${
-                        porcentaje < 80
-                          ? "bg-green-500"
-                          : porcentaje < 100
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                      }`}
-                      style={{ width: `${porcentaje}%`, transition: "width 0.4s" }}
-                    />
+                <div key={item.id} className="category-item" style={{ marginBottom: "1rem", position: "relative" }}>
+                  <div className="category-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                    <span style={{ fontWeight: 600 }}>{item.categoria}</span>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                      {editandoId === item.id ? (
+                        <div style={{ display: "flex", gap: "5px" }}>
+                          <input 
+                            type="number" 
+                            className="field-sm" 
+                            style={{ width: "80px", padding: "2px 4px" }}
+                            value={editMontoCategoria}
+                            onChange={(e) => setEditMontoCategoria(e.target.value)}
+                          />
+                          <button className="btn-icon text-green" onClick={() => guardarEdicion(item.id)}><Check size={14} /></button>
+                          <button className="btn-icon" onClick={() => setEditandoId(null)}><X size={14} /></button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="muted">${gasto.toFixed(0)} / ${item.monto}</span>
+                          <button className="btn-icon text-blue" onClick={() => iniciarEdicion(item)}><Pencil size={14} /></button>
+                          <button className="btn-icon text-red" onClick={() => eliminarPresupuestoCategoria(item.id)}><Trash2 size={14} /></button>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm mt-1 text-gray-300">
-                    {gasto < item.monto
-                      ? `Te quedan $${restante.toFixed(0)}`
-                      : `❌ Excedido por $${Math.abs(restante).toFixed(0)}`}
+                  <div className="progress-bar-bg">
+                    <div className="progress-bar-fill" style={{ width: `${p}%`, background: c }} />
+                  </div>
+                  <p className="category-resto" style={{ color: c }}>
+                    {gasto < item.monto 
+                      ? `Disponible: $${(item.monto - gasto).toFixed(0)}` 
+                      : gasto === item.monto 
+                      ? "Agotado ($0 disp.)"
+                      : `Excedido: $${(gasto - item.monto).toFixed(0)}`}
                   </p>
                 </div>
               );
             })}
           </div>
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }

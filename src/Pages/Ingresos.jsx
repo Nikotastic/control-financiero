@@ -1,34 +1,22 @@
 import React, { useEffect, useState } from "react";
-// Importación de funciones de Firestore para CRUD y manejo de fechas
 import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  deleteDoc,
-  doc,
-  updateDoc,
-  addDoc,
-  Timestamp,
+  collection, onSnapshot, query, where, orderBy,
+  deleteDoc, doc, updateDoc, addDoc, Timestamp,
 } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
-import Navegation from "../Components/Navegation";
-
-// Importación de componentes de Recharts para gráficos
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from "recharts";
+import { Plus, Pencil, Trash2, X, Check, TrendingUp } from "lucide-react";
+
+import { useAuth } from "../context/AuthContext";
+
+const CATEGORIAS_INGRESOS = ["Salario", "Negocio", "Inversiones", "Ventas", "Regalos", "Otros"];
+const COLORS = ["#00c896", "#4b7bec", "#a55eea", "#feca57", "#ff9f43", "#8395a7"];
 
 const Ingresos = () => {
-  // Estados para manejar datos y formularios
+  const { user } = useAuth();
   const [ingresos, setIngresos] = useState([]);
   const [total, setTotal] = useState(0);
   const [datosGrafico, setDatosGrafico] = useState([]);
@@ -37,235 +25,255 @@ const Ingresos = () => {
   const [editMonto, setEditMonto] = useState("");
   const [nuevaDescripcion, setNuevaDescripcion] = useState("");
   const [nuevoMonto, setNuevoMonto] = useState("");
+  const [nuevaCategoria, setNuevaCategoria] = useState("Salario");
+  const [editCategoria, setEditCategoria] = useState("Salario");
+  const [mostrarForm, setMostrarForm] = useState(false);
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 6;
 
-  // useEffect para escuchar cambios en la colección de Firestore
   useEffect(() => {
+    if (!user?.uid) return;
     const q = query(
       collection(db, "movimientos"),
-      where("tipo", "==", "Ingreso"), // Filtra solo ingresos
-      orderBy("fecha", "desc") // Ordena por fecha descendente
+      where("uid", "==", user.uid)
     );
-
-    // Escucha en tiempo real los datos de Firestore
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Mapeo de documentos y filtrado por registros válidos
+    const unsub = onSnapshot(q, (snapshot) => {
       const datos = snapshot.docs
         .map((doc) => ({ id: doc.id, ...doc.data() }))
-        .filter((doc) => doc.fecha);
-
+        .filter((d) => d.tipo === "Ingreso" && d.fecha)
+        .sort((a, b) => b.fecha.seconds - a.fecha.seconds);
       setIngresos(datos);
-
-      // Sumar todos los montos
-      const suma = datos.reduce((acc, mov) => acc + mov.monto, 0);
-      setTotal(suma);
-
-      // Agrupar por fecha para el gráfico
+      setTotal(datos.reduce((acc, m) => acc + m.monto, 0));
       const agrupados = {};
+      const hoy = new Date();
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(hoy);
+        d.setDate(d.getDate() - i);
+        const fKey = d.toLocaleDateString();
+        agrupados[fKey] = { fecha: fKey, monto: 0, sortVal: d.getTime() };
+      }
+
       datos.forEach((mov) => {
-        const fecha = new Date(mov.fecha.seconds * 1000).toLocaleDateString();
-        if (!agrupados[fecha]) agrupados[fecha] = { fecha, monto: 0 };
-        agrupados[fecha].monto += mov.monto;
+        const fechaStr = new Date(mov.fecha.seconds * 1000).toLocaleDateString();
+        // Solo metemos datos si caen dentro de los últimos 7 días (o los agrupamos, si quitas el if)
+        if (agrupados[fechaStr]) agrupados[fechaStr].monto += mov.monto;
       });
-
-      // Convertir en array y ordenar
-      const formatoFinal = Object.values(agrupados).sort((a, b) =>
-        a.fecha.localeCompare(b.fecha)
-      );
-      setDatosGrafico(formatoFinal);
+      setDatosGrafico(Object.values(agrupados).sort((a, b) => a.sortVal - b.sortVal));
     });
+    return () => unsub();
+  }, [user?.uid]);
 
-    // Cleanup del listener
-    return () => unsubscribe();
-  }, []);
-
-  // Función para agregar un nuevo ingreso a Firestore
   const agregarIngreso = async () => {
+    if (!nuevaDescripcion || !nuevoMonto) return;
     try {
       await addDoc(collection(db, "movimientos"), {
         descripcion: nuevaDescripcion,
         monto: parseFloat(nuevoMonto),
+        categoria: nuevaCategoria,
         tipo: "Ingreso",
         fecha: Timestamp.fromDate(new Date()),
+        uid: user.uid,
       });
-      // Limpiar inputs d
       setNuevaDescripcion("");
       setNuevoMonto("");
-    } catch (error) {
-      console.error("Error al agregar:", error);
-    }
+      setMostrarForm(false);
+    } catch (e) { console.error(e); }
   };
 
-  // Preparar el formulario de edición
-  const comenzarEdicion = (ingreso) => {
-    setEditandoId(ingreso.id);
-    setEditDescripcion(ingreso.descripcion);
-    setEditMonto(ingreso.monto);
-  };
-
-  // Guardar los cambios de un ingreso editado
   const guardarEdicion = async (id) => {
     try {
       await updateDoc(doc(db, "movimientos", id), {
         descripcion: editDescripcion,
         monto: parseFloat(editMonto),
+        categoria: editCategoria,
       });
-      
       setEditandoId(null);
-      setEditDescripcion("");
-      setEditMonto("");
-    } catch (error) {
-      console.error("Error al actualizar:", error);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  // Eliminar un ingreso de Firestore
   const eliminarIngreso = async (id) => {
-    try {
-      await deleteDoc(doc(db, "movimientos", id));
-    } catch (error) {
-      console.error("Error al eliminar:", error);
-    }
+    try { await deleteDoc(doc(db, "movimientos", id)); }
+    catch (e) { console.error(e); }
   };
 
-  // Renderizado del componente
+  const indiceUltimo = paginaActual * itemsPorPagina;
+  const indicePrimer = indiceUltimo - itemsPorPagina;
+  const ingresosPaginados = ingresos.slice(indicePrimer, indiceUltimo);
+  const totalPaginas = Math.ceil(ingresos.length / itemsPorPagina);
+
+  const datosPastel = CATEGORIAS_INGRESOS.map((cat) => ({
+    name: cat,
+    value: ingresos.filter((g) => g.categoria === cat).reduce((acc, g) => acc + g.monto, 0),
+  })).filter((d) => d.value > 0);
+
   return (
-    <div className="layout flex h-[100vh]">
-      {/* Barra lateral de navegación */}
-      <aside className="sidebar sticky top-0 h-screen w-[220px] bg-black text-white p-8 rounded-r-[20px] shadow-lg z-20">
-        <Navegation />
-      </aside>
+    <div className="page-content">
+      {/* Encabezado */}
+      <div className="page-header">
+        <div>
+          <h2 className="page-title">Ingresos</h2>
+          <p className="page-subtitle">Registra y controla tus fuentes de ingreso</p>
+        </div>
+        <button className="btn-primary" onClick={() => setMostrarForm(!mostrarForm)}>
+          <Plus size={18} />
+          Nuevo ingreso
+        </button>
+      </div>
 
-      {/* Contenido principal */}
-      <main className="main-content flex flex-1 flex-col items-center pt-8 px-6 overflow-auto text-white">
-        <header className="text-4xl font-bold mb-6">Ingresos</header>
-
-        {/* Sección principal con datos, formulario y gráfico */}
-        <section className="w-full max-w-[1200px] animate-fade-in bg-[#1e272e] p-6 rounded-xl shadow-md mb-8">
-          {/* Total de ingresos */}
-          <div className="mb-6 text-lg font-semibold text-green-400">
-             Total de ingresos: ${total}
+      {/* Stat card */}
+      <div className="stat-grid">
+        <div className="stat-card stat-green">
+          <TrendingUp size={22} />
+          <div>
+            <p className="stat-label">Total ingresos</p>
+            <p className="stat-value">${total.toLocaleString()}</p>
           </div>
+        </div>
+        <div className="stat-card">
+          <div>
+            <p className="stat-label">Registros</p>
+            <p className="stat-value">{ingresos.length}</p>
+          </div>
+        </div>
+      </div>
 
-          {/* Formulario para agregar nuevos ingresos */}
-          <div className="flex justify-center mb-6">
-            <div className="p-4 bg-gray-900 text-white rounded-xl w-full max-w-md">
-              <h2 className="text-xl font-semibold mb-4">Agregar Ingreso</h2>
-              <input
-                className="w-full p-2 mb-2 rounded bg-gray-700"
-                type="text"
-                placeholder="Descripción"
-                value={nuevaDescripcion}
-                onChange={(e) => setNuevaDescripcion(e.target.value)}
-              />
-              <input
-                className="w-full p-2 mb-2 rounded bg-gray-700"
-                type="number"
-                placeholder="Monto"
-                value={nuevoMonto}
-                onChange={(e) => setNuevoMonto(e.target.value)}
-              />
-              <button
-                onClick={agregarIngreso}
-                className="w-full p-2 bg-green-600 hover:bg-green-700 rounded"
-              >
-                Guardar
-              </button>
+      {/* Formulario */}
+      {mostrarForm && (
+        <div className="card form-card animate-fade-in">
+          <h3 className="card-title">Agregar ingreso</h3>
+          <div className="form-row">
+            <input
+              className="field"
+              type="text"
+              placeholder="Descripción"
+              value={nuevaDescripcion}
+              onChange={(e) => setNuevaDescripcion(e.target.value)}
+            />
+            <input
+              className="field"
+              type="number"
+              placeholder="Monto ($)"
+              value={nuevoMonto}
+              onChange={(e) => setNuevoMonto(e.target.value)}
+            />
+            <select
+              className="field"
+              value={nuevaCategoria}
+              onChange={(e) => setNuevaCategoria(e.target.value)}
+            >
+              {CATEGORIAS_INGRESOS.map(c => <option key={c}>{c}</option>)}
+            </select>
+            <button className="btn-primary" onClick={agregarIngreso}>Guardar</button>
+            <button className="btn-ghost" onClick={() => setMostrarForm(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Gráfico */}
+      {datosGrafico.length > 0 && (
+        <div className="charts-grid">
+          {datosPastel.length > 0 && (
+            <div className="card">
+              <h3 className="card-title">Por categoría</h3>
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie data={datosPastel} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80}>
+                    {datosPastel.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                  </Pie>
+                  <Legend verticalAlign="bottom" />
+                  <Tooltip contentStyle={{ background: "#1e272e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} itemStyle={{ color: "#fff" }} />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
-          </div>
-
-          {/* Gráfico de ingresos por día */}
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Ingresos por día</h2>
-            <ResponsiveContainer width="100%" height={250}>
+          )}
+          <div className="card">
+            <h3 className="card-title">Ingresos por día</h3>
+            <ResponsiveContainer width="100%" height={220}>
               <BarChart data={datosGrafico}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="fecha" />
-                <YAxis />
-                <Tooltip />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                <XAxis dataKey="fecha" tick={{ fill: "#8b949e", fontSize: 12 }} />
+                <YAxis tick={{ fill: "#8b949e", fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: "#1e272e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8 }} itemStyle={{ color: "#fff" }} cursor={{ fill: "rgba(255,255,255,0.05)" }} />
                 <Legend />
-                <Bar dataKey="monto" fill="#00c896" name="Monto ($)" />
+                <Bar dataKey="monto" fill="#00c896" name="Monto ($)" radius={[4,4,0,0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
+      )}
 
-          {/* Tabla de ingresos con opciones de edición y eliminación */}
-          <table className="w-full text-left text-white" key={ingresos.length + total}>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th className="pb-2">Fecha</th>
-                <th className="pb-2">Descripción</th>
-                <th className="pb-2">Monto</th>
-                <th className="pb-2">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ingresos.map((ingreso) => (
-                <tr key={ingreso.id} className="border-t border-gray-700">
-                  {/* Fecha */}
-                  <td className="py-2">
-                    {new Date(ingreso.fecha.seconds * 1000).toLocaleDateString()}
-                  </td>
-
-            
-                  {editandoId === ingreso.id ? (
-                    <>
-                      <td>
-                        <input
-                          className="bg-gray-700 rounded p-1 w-full"
-                          value={editDescripcion}
-                          onChange={(e) => setEditDescripcion(e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          className="bg-gray-700 rounded p-1 w-full"
-                          type="number"
-                          value={editMonto}
-                          onChange={(e) => setEditMonto(e.target.value)}
-                        />
-                      </td>
-                      <td className="flex gap-2">
-                        <button
-                          onClick={() => guardarEdicion(ingreso.id)}
-                          className="bg-green-600 px-2 py-1 rounded text-sm hover:bg-green-700"
-                        >
-                          Guardar
-                        </button>
-                        <button
-                          onClick={() => setEditandoId(null)}
-                          className="bg-gray-600 px-2 py-1 rounded text-sm hover:bg-gray-700"
-                        >
-                          Cancelar
-                        </button>
-                      </td>
-                    </>
-                  ) : (
-                    // Modo visual normal
-                    <>
-                      <td>{ingreso.descripcion}</td>
-                      <td className="text-green-400">${ingreso.monto}</td>
-                      <td className="flex gap-2">
-                        <button
-                          onClick={() => comenzarEdicion(ingreso)}
-                          className="bg-blue-600 px-2 py-1 rounded text-sm hover:bg-blue-700"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          onClick={() => eliminarIngreso(ingreso.id)}
-                          className="bg-red-600 px-2 py-1 rounded text-sm hover:bg-red-700"
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </>
-                  )}
+      {/* Tabla */}
+      <div className="card">
+        <h3 className="card-title">Historial</h3>
+        {ingresos.length === 0 ? (
+          <p className="empty-state">No hay ingresos registrados aún.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th><th>Descripción</th><th>Categoría</th><th>Monto</th><th>Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      </main>
+              </thead>
+              <tbody>
+                {ingresosPaginados.map((ing) => (
+                  <tr key={ing.id}>
+                    <td className="muted">{new Date(ing.fecha.seconds * 1000).toLocaleDateString()}</td>
+                    {editandoId === ing.id ? (
+                      <>
+                        <td><input className="field-inline" value={editDescripcion} onChange={(e) => setEditDescripcion(e.target.value)} /></td>
+                        <td>
+                          <select className="field-inline" value={editCategoria} onChange={(e) => setEditCategoria(e.target.value)}>
+                            {CATEGORIAS_INGRESOS.map(c => <option key={c}>{c}</option>)}
+                          </select>
+                        </td>
+                        <td><input className="field-inline" type="number" value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
+                        <td>
+                          <div className="action-btns">
+                            <button className="icon-btn green" onClick={() => guardarEdicion(ing.id)}><Check size={15}/></button>
+                            <button className="icon-btn ghost" onClick={() => setEditandoId(null)}><X size={15}/></button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{ing.descripcion}</td>
+                        <td><span className="badge">{ing.categoria || "Sin categoría"}</span></td>
+                        <td className="amount-green">${ing.monto.toLocaleString()}</td>
+                        <td>
+                          <div className="action-btns">
+                            <button className="icon-btn blue" onClick={() => { setEditandoId(ing.id); setEditDescripcion(ing.descripcion); setEditMonto(ing.monto); setEditCategoria(ing.categoria || "Salario"); }}><Pencil size={15}/></button>
+                            <button className="icon-btn red" onClick={() => eliminarIngreso(ing.id)}><Trash2 size={15}/></button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Controles de paginación */}
+            {totalPaginas > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "1rem", alignItems: "center" }}>
+                <button 
+                  className="btn-ghost" 
+                  disabled={paginaActual === 1} 
+                  onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                >Anterior</button>
+                <span className="muted" style={{ fontSize: "0.9rem" }}>
+                  Página {paginaActual} de {totalPaginas}
+                </span>
+                <button 
+                  className="btn-ghost" 
+                  disabled={paginaActual === totalPaginas} 
+                  onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                >Siguiente</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
