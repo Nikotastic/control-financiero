@@ -1,36 +1,48 @@
-
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { App } from "./App";
 import "./index.css";
-/* import "./Components/Navegation";
-import "./Components/Dashboard"; */
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-// Importa las páginas (vistas) que componen tu aplicación
-import Ingresos from "./Pages/Ingresos";
-import Gastos from "./Pages/Gastos";
-import Presupuesto from "./Pages/Presupuesto";
-import Reportes from "./Pages/Reportes";
-import Inversiones from "./Pages/Inversiones";
-import Configuracion from "./Pages/Configuracion";
 
-// Obtiene el nodo raíz del DOM donde se montará la app
+// Páginas
+import Ingresos     from "./Pages/Ingresos";
+import Gastos       from "./Pages/Gastos";
+import Presupuesto  from "./Pages/Presupuesto";
+import Reportes     from "./Pages/Reportes";
+import Inversiones  from "./Pages/Inversiones";
+import Configuracion from "./Pages/Configuracion";
+import Login        from "./Pages/Login";
+import { App }      from "./App";
+
+// Auth + Toast
+import { AuthProvider }    from "./context/AuthContext";
+import ProtectedRoute      from "./Components/ProtectedRoute";
+import { ToastProvider }   from "./Components/ToastProvider";
+
 const root = ReactDOM.createRoot(document.getElementById("root"));
 
-// Renderiza la aplicación dentro de BrowserRouter para habilitar el enrutamiento
+const P = ({ Page }) => (
+  <ProtectedRoute>
+    <App>
+      <Page />
+    </App>
+  </ProtectedRoute>
+);
+
 root.render(
   <BrowserRouter>
-    <Routes>
-      {/* Ruta principal que muestra el componente App */}
-      <Route path="/" element={<App />} />
-
-      {/* Rutas adicionales que corresponden a distintas secciones */}
-      <Route path="/ingresos" element={<Ingresos />} />
-      <Route path="/gastos" element={<Gastos />} />
-      <Route path="/presupuesto" element={<Presupuesto />} />
-      <Route path="/reportes" element={<Reportes />} />
-      <Route path="/inversiones" element={<Inversiones />} />
-      <Route path="/configuracion" element={<Configuracion />} />
-    </Routes>
+    <AuthProvider>
+      <ToastProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/"              element={<ProtectedRoute><App /></ProtectedRoute>} />
+          <Route path="/ingresos"      element={<P Page={Ingresos} />} />
+          <Route path="/gastos"        element={<P Page={Gastos} />} />
+          <Route path="/presupuesto"   element={<P Page={Presupuesto} />} />
+          <Route path="/reportes"      element={<P Page={Reportes} />} />
+          <Route path="/inversiones"   element={<P Page={Inversiones} />} />
+          <Route path="/configuracion" element={<P Page={Configuracion} />} />
+        </Routes>
+      </ToastProvider>
+    </AuthProvider>
   </BrowserRouter>
 );
