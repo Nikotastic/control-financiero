@@ -18,7 +18,7 @@ export function App({ children }) {
         <section className="main-section animate-fade-in">
           {children ?? <Dashboard />}
         </section>
-        
+
         {/* Calculadora flotante */}
         <CalcWidget />
       </main>

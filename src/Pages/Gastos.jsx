@@ -10,6 +10,7 @@ import {
 } from "recharts";
 import { Plus, Pencil, Trash2, X, Check, HandCoins } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../Components/ToastProvider";
 
 const CATEGORIAS = [
   "Vivienda", "Alimentación", "Transporte", "Servicios", "Salud", 
@@ -22,6 +23,7 @@ const COLORS = [
 
 const Gastos = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [gastos, setGastos] = useState([]);
   const [descripcion, setDescripcion] = useState("");
   const [monto, setMonto] = useState("");
@@ -53,24 +55,50 @@ const Gastos = () => {
   const total = gastos.reduce((acc, g) => acc + g.monto, 0);
 
   const agregarGasto = async () => {
-    if (!descripcion || !monto) return;
+    if (!descripcion || !monto) {
+      toast("completa todos los campos", "warning");
+      return;
+    }
+    const valMonto = parseFloat(monto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El monto debe ser un valor positivo mayor a 0", "error");
+      return;
+    }
+
     try {
       await addDoc(collection(db, "movimientos"), {
-        descripcion, monto: parseFloat(monto), tipo: "Gasto", categoria,
+        descripcion, monto: valMonto, tipo: "Gasto", categoria,
         fecha: Timestamp.fromDate(new Date()),
         uid: user.uid,
       });
+      toast("Gasto registrado exitosamente", "success");
       setDescripcion(""); setMonto(""); setMostrarForm(false);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      toast("Error al guardar el gasto", "error");
+    }
   };
 
   const guardarEdicion = async (id) => {
+    if (!editDescripcion || !editMonto) {
+      toast("Completa todos los campos de edición", "warning");
+      return;
+    }
+    const valMonto = parseFloat(editMonto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El monto a editar debe ser mayor a 0", "error");
+      return;
+    }
     try {
       await updateDoc(doc(db, "movimientos", id), {
-        descripcion: editDescripcion, monto: parseFloat(editMonto), categoria: editCategoria,
+        descripcion: editDescripcion, monto: valMonto, categoria: editCategoria,
       });
+      toast("Gasto actualizado", "success");
       setEditandoId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      toast("No se pudo actualizar el gasto", "error");
+    }
   };
 
   const eliminarGasto = async (id) => {
@@ -139,7 +167,7 @@ const Gastos = () => {
           <h3 className="card-title">Agregar gasto</h3>
           <div className="form-row">
             <input className="field" type="text" placeholder="Descripción" value={descripcion} onChange={(e) => setDescripcion(e.target.value)} />
-            <input className="field" type="number" placeholder="Monto ($)" value={monto} onChange={(e) => setMonto(e.target.value)} />
+            <input className="field" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} placeholder="Monto ($)" value={monto} onChange={(e) => setMonto(e.target.value)} />
             <select className="field" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
               {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
             </select>
@@ -200,7 +228,7 @@ const Gastos = () => {
                       <>
                         <td><input className="field-inline" value={editDescripcion} onChange={(e) => setEditDescripcion(e.target.value)} /></td>
                         <td><select className="field-inline" value={editCategoria} onChange={(e) => setEditCategoria(e.target.value)}>{CATEGORIAS.map((c) => <option key={c}>{c}</option>)}</select></td>
-                        <td><input className="field-inline" type="number" value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
+                        <td><input className="field-inline" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
                         <td><div className="action-btns">
                           <button className="icon-btn green" onClick={() => guardarEdicion(g.id)}><Check size={15}/></button>
                           <button className="icon-btn ghost" onClick={() => setEditandoId(null)}><X size={15}/></button>

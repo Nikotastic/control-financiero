@@ -6,6 +6,7 @@ import { db } from "../firebaseConfig/firebase";
 import { Target, Plus, Pencil, Trash2, X, Check } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../Components/ToastProvider";
 
 const obtenerMesActual = () => {
   const now = new Date();
@@ -19,11 +20,11 @@ const CATEGORIAS = [
 
 export default function Presupuesto() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [montoPresupuesto, setMontoPresupuesto] = useState("");
   const [presupuestoActual, setPresupuestoActual] = useState(null);
   const [totalGastos, setTotalGastos] = useState(0);
   const [totalIngresos, setTotalIngresos] = useState(0);
-  const [mensaje, setMensaje] = useState("");
   const [categoria, setCategoria] = useState("Vivienda");
   const [montoCategoria, setMontoCategoria] = useState("");
   const [presupuestosCategoria, setPresupuestosCategoria] = useState([]);
@@ -66,12 +67,18 @@ export default function Presupuesto() {
   }, [mesActual, user.uid]);
 
   const guardarPresupuesto = async () => {
-    if (!montoPresupuesto || isNaN(montoPresupuesto)) return;
+    if (!montoPresupuesto) {
+      toast("Ingresa un monto para el presupuesto global", "warning");
+      return;
+    }
     const monto = parseFloat(montoPresupuesto);
+    if (isNaN(monto) || monto <= 0) {
+      toast("El presupuesto general debe ser mayor a 0", "error");
+      return;
+    }
     await setDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`), { monto, uid: user.uid });
     setPresupuestoActual(monto);
-    setMensaje("Presupuesto guardado");
-    setTimeout(() => setMensaje(""), 2500);
+    toast("Presupuesto guardado con éxito", "success");
     setMontoPresupuesto("");
   };
 
@@ -79,16 +86,27 @@ export default function Presupuesto() {
     try {
       await deleteDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`));
       setPresupuestoActual(null);
-      setMensaje("Presupuesto eliminado");
-      setTimeout(() => setMensaje(""), 2500);
-    } catch (e) { console.error(e); }
+      toast("Presupuesto eliminado", "info");
+    } catch (e) { 
+      console.error(e); 
+      toast("Error al eliminar el presupuesto", "error");
+    }
   };
 
   const agregarPresupuestoCategoria = async () => {
-    if (!montoCategoria || isNaN(montoCategoria)) return;
+    if (!montoCategoria) {
+      toast("Ingresa el monto para la categoría", "warning");
+      return;
+    }
+    const monto = parseFloat(montoCategoria);
+    if (isNaN(monto) || monto <= 0) {
+      toast("El presupuesto por categoría debe ser mayor a 0", "error");
+      return;
+    }
     await addDoc(collection(db, "presupuestos_categoria"), {
-      mes: mesActual, categoria, monto: parseFloat(montoCategoria), uid: user.uid,
+      mes: mesActual, categoria, monto, uid: user.uid,
     });
+    toast(`Presupuesto para ${categoria} guardado`, "success");
     setMontoCategoria("");
   };
 
@@ -103,13 +121,26 @@ export default function Presupuesto() {
   };
 
   const guardarEdicion = async (id) => {
-    if (!editMontoCategoria || isNaN(editMontoCategoria)) return;
+    if (!editMontoCategoria) {
+      toast("Ingresa un monto para actualizar", "warning");
+      return;
+    }
+    const monto = parseFloat(editMontoCategoria);
+    if (isNaN(monto) || monto <= 0) {
+      toast("El monto actualizado debe ser mayor a 0", "error");
+      return;
+    }
+
     try {
       await updateDoc(doc(db, "presupuestos_categoria", id), {
-        monto: parseFloat(editMontoCategoria)
+        monto: monto
       });
+      toast("Categoría actualizada correctamente", "success");
       setEditandoId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      toast("Error al actualizar la categoría", "error");
+    }
   };
 
   const usado = totalGastos;
@@ -149,14 +180,13 @@ export default function Presupuesto() {
         <div className="card">
           <h3 className="card-title"><Target size={18} /> Presupuesto mensual</h3>
           <div className="form-stack">
-            <input className="field" type="number" placeholder="Monto mensual ($)" value={montoPresupuesto} onChange={(e) => setMontoPresupuesto(e.target.value)} />
+            <input className="field" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} placeholder="Monto mensual ($)" value={montoPresupuesto} onChange={(e) => setMontoPresupuesto(e.target.value)} />
             <button className="btn-primary" onClick={guardarPresupuesto}>Guardar</button>
             {presupuestoActual !== null && (
               <button className="btn-icon-danger" onClick={eliminarPresupuesto} title="Quitar presupuesto mensual">
                 <Trash2 size={16} /> Quitar presupuesto
               </button>
             )}
-            {mensaje && <p className={mensaje.includes("eliminado") ? "msg-error" : "msg-success"}>{mensaje}</p>}
           </div>
 
           {presupuestoActual !== null && (
@@ -181,7 +211,7 @@ export default function Presupuesto() {
             <select className="field" value={categoria} onChange={(e) => setCategoria(e.target.value)}>
               {CATEGORIAS.map((c) => <option key={c}>{c}</option>)}
             </select>
-            <input className="field" type="number" placeholder="Monto ($)" value={montoCategoria} onChange={(e) => setMontoCategoria(e.target.value)} />
+            <input className="field" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} placeholder="Monto ($)" value={montoCategoria} onChange={(e) => setMontoCategoria(e.target.value)} />
             <button className="btn-primary" onClick={agregarPresupuestoCategoria}>Agregar</button>
           </div>
 

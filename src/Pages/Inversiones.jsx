@@ -13,9 +13,11 @@ const TIPO_COLOR = {
 };
 
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../Components/ToastProvider";
 
 const Inversiones = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [inversiones, setInversiones] = useState([]);
   const [nombre, setNombre] = useState("");
   const [monto, setMonto] = useState("");
@@ -40,22 +42,49 @@ const Inversiones = () => {
   const totalInvertido = inversiones.reduce((a, i) => a + i.monto, 0);
 
   const agregarInversion = async () => {
-    if (!nombre || !monto) return;
+    if (!nombre || !monto) {
+      toast("Completa el nombre y monto de la inversión", "warning");
+      return;
+    }
+    const valMonto = parseFloat(monto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El monto de la inversión debe ser superior a 0", "error");
+      return;
+    }
+
     try {
       await addDoc(collection(db, "inversiones"), {
-        nombre, monto: parseFloat(monto), tipo, fecha: Timestamp.fromDate(new Date()), uid: user.uid,
+        nombre, monto: valMonto, tipo, fecha: Timestamp.fromDate(new Date()), uid: user.uid,
       });
+      toast("Inversión agregada a tu portafolio", "success");
       setNombre(""); setMonto(""); setMostrarForm(false);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e); 
+      toast("Hubo un error al registrar la inversión", "error");
+    }
   };
 
   const guardarEdicion = async (id) => {
+    if (!editNombre || !editMonto) {
+      toast("Los campos no pueden estar vacíos", "warning");
+      return;
+    }
+    const valMonto = parseFloat(editMonto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El monto actualizado debe ser superior a 0", "error");
+      return;
+    }
+
     try {
       await updateDoc(doc(db, "inversiones", id), {
-        nombre: editNombre, monto: parseFloat(editMonto), tipo: editTipo,
+        nombre: editNombre, monto: valMonto, tipo: editTipo,
       });
+      toast("Inversión actualizada correctamente", "success");
       setEditandoId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e); 
+      toast("Error al actualizar la inversión", "error");
+    }
   };
 
   const eliminarInversion = async (id) => {
@@ -96,7 +125,7 @@ const Inversiones = () => {
           <h3 className="card-title">Agregar inversión</h3>
           <div className="form-row">
             <input className="field" type="text" placeholder="Nombre del activo" value={nombre} onChange={(e) => setNombre(e.target.value)} />
-            <input className="field" type="number" placeholder="Monto ($)" value={monto} onChange={(e) => setMonto(e.target.value)} />
+            <input className="field" type="number" min="0" step="0.01" onKeyDown={(e) => { if (!/^[0-9.]$/.test(e.key) && !["Backspace", "ArrowLeft", "ArrowRight", "Delete", "Tab"].includes(e.key)) e.preventDefault(); }} placeholder="Monto ($)" value={monto} onChange={(e) => setMonto(e.target.value)} />
             <select className="field" value={tipo} onChange={(e) => setTipo(e.target.value)}>
               {TIPOS.map((t) => <option key={t}>{t}</option>)}
             </select>
@@ -124,7 +153,7 @@ const Inversiones = () => {
                       <>
                         <td><input className="field-inline" value={editNombre} onChange={(e) => setEditNombre(e.target.value)} /></td>
                         <td><select className="field-inline" value={editTipo} onChange={(e) => setEditTipo(e.target.value)}>{TIPOS.map((t) => <option key={t}>{t}</option>)}</select></td>
-                        <td><input className="field-inline" type="number" value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
+                        <td><input className="field-inline" type="number" min="0" step="0.01" onKeyDown={(e) => { if (!/^[0-9.]$/.test(e.key) && !["Backspace", "ArrowLeft", "ArrowRight", "Delete", "Tab"].includes(e.key)) e.preventDefault(); }} value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
                         <td><div className="action-btns">
                           <button className="icon-btn green" onClick={() => guardarEdicion(inv.id)}><Check size={15}/></button>
                           <button className="icon-btn ghost" onClick={() => setEditandoId(null)}><X size={15}/></button>

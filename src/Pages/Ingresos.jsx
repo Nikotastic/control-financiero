@@ -11,12 +11,14 @@ import {
 import { Plus, Pencil, Trash2, X, Check, TrendingUp } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
+import { useToast } from "../Components/ToastProvider";
 
 const CATEGORIAS_INGRESOS = ["Salario", "Negocio", "Inversiones", "Ventas", "Regalos", "Otros"];
 const COLORS = ["#00c896", "#4b7bec", "#a55eea", "#feca57", "#ff9f43", "#8395a7"];
 
 const Ingresos = () => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [ingresos, setIngresos] = useState([]);
   const [total, setTotal] = useState(0);
   const [datosGrafico, setDatosGrafico] = useState([]);
@@ -64,31 +66,58 @@ const Ingresos = () => {
   }, [user?.uid]);
 
   const agregarIngreso = async () => {
-    if (!nuevaDescripcion || !nuevoMonto) return;
+    if (!nuevaDescripcion || !nuevoMonto) {
+      toast("Completa todos los campos del ingreso", "warning");
+      return;
+    }
+    const valMonto = parseFloat(nuevoMonto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El ingreso debe ser un valor positivo mayor a 0", "error");
+      return;
+    }
+
     try {
       await addDoc(collection(db, "movimientos"), {
         descripcion: nuevaDescripcion,
-        monto: parseFloat(nuevoMonto),
+        monto: valMonto,
         categoria: nuevaCategoria,
         tipo: "Ingreso",
         fecha: Timestamp.fromDate(new Date()),
         uid: user.uid,
       });
+      toast("Ingreso registrado exitosamente", "success");
       setNuevaDescripcion("");
       setNuevoMonto("");
       setMostrarForm(false);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      toast("Error al guardar el ingreso", "error");
+    }
   };
 
   const guardarEdicion = async (id) => {
+    if (!editDescripcion || !editMonto) {
+      toast("Completa todos los campos de edición", "warning");
+      return;
+    }
+    const valMonto = parseFloat(editMonto);
+    if (isNaN(valMonto) || valMonto <= 0) {
+      toast("El monto a editar debe ser mayor a 0", "error");
+      return;
+    }
+
     try {
       await updateDoc(doc(db, "movimientos", id), {
         descripcion: editDescripcion,
-        monto: parseFloat(editMonto),
+        monto: valMonto,
         categoria: editCategoria,
       });
+      toast("Ingreso actualizado", "success");
       setEditandoId(null);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+      toast("No se pudo actualizar el ingreso", "error");
+    }
   };
 
   const eliminarIngreso = async (id) => {
@@ -152,6 +181,7 @@ const Ingresos = () => {
             <input
               className="field"
               type="number"
+              min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }}
               placeholder="Monto ($)"
               value={nuevoMonto}
               onChange={(e) => setNuevoMonto(e.target.value)}
@@ -227,7 +257,7 @@ const Ingresos = () => {
                             {CATEGORIAS_INGRESOS.map(c => <option key={c}>{c}</option>)}
                           </select>
                         </td>
-                        <td><input className="field-inline" type="number" value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
+                        <td><input className="field-inline" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} value={editMonto} onChange={(e) => setEditMonto(e.target.value)} /></td>
                         <td>
                           <div className="action-btns">
                             <button className="icon-btn green" onClick={() => guardarEdicion(ing.id)}><Check size={15}/></button>
