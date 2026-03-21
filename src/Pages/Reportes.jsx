@@ -14,6 +14,7 @@ import { useAuth } from "../context/AuthContext";
 const Reportes = () => {
   const { user } = useAuth();
   const [movimientos, setMovimientos] = useState([]);
+  const [deudas, setDeudas] = useState([]);
   const [mes, setMes] = useState(new Date().getMonth());
   const [anio, setAnio] = useState(new Date().getFullYear());
 
@@ -27,7 +28,14 @@ const Reportes = () => {
         setMovimientos(docs);
       }
     );
-    return () => unsub();
+    const unsubDeudas = onSnapshot(
+      query(collection(db, "deudas"), where("uid", "==", user.uid)),
+      (snap) => {
+        let docs = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(d => d.fecha);
+        setDeudas(docs);
+      }
+    );
+    return () => { unsub(); unsubDeudas(); };
   }, [user.uid]);
 
   const filtrados = movimientos.filter((m) => {
@@ -35,11 +43,22 @@ const Reportes = () => {
     return f.getMonth() === parseInt(mes) && f.getFullYear() === parseInt(anio);
   });
 
+  const deudasFiltradas = deudas.filter((d) => {
+    const f = new Date(d.fecha.seconds * 1000);
+    return f.getMonth() === parseInt(mes) && f.getFullYear() === parseInt(anio);
+  });
+
   const ingresos = filtrados.filter((m) => m.tipo === "Ingreso");
   const gastos   = filtrados.filter((m) => m.tipo === "Gasto");
   const totalI   = ingresos.reduce((a, m) => a + m.monto, 0);
   const totalG   = gastos.reduce((a, m) => a + m.monto, 0);
-  const balance  = totalI - totalG;
+  
+  const meDebenMes = deudasFiltradas.filter(d => d.tipo === "Me deben").reduce((a, d) => a + d.monto, 0);
+  const deboMes    = deudasFiltradas.filter(d => d.tipo === "Debo").reduce((a, d) => a + d.monto, 0);
+
+  const meDebenRestar = Math.max(0, meDebenMes - 16000);
+
+  const balance  = (totalI - totalG) - meDebenRestar;
 
   const gastosPorCat = gastos.reduce((acc, m) => {
     acc[m.categoria] = (acc[m.categoria] || 0) + m.monto;
@@ -81,8 +100,20 @@ const Reportes = () => {
         </div>
         <div className={`stat-card ${balance >= 0 ? "stat-green" : "stat-red"}`}>
           <div>
-            <p className="stat-label">Balance</p>
+            <p className="stat-label">Balance Neto</p>
             <p className="stat-value">${balance.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div>
+            <p className="stat-label">Me Deben (Este Mes)</p>
+            <p className="stat-value amount-green">${meDebenMes.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div>
+            <p className="stat-label">Nuevas Deudas Mías</p>
+            <p className="stat-value amount-red">${deboMes.toLocaleString()}</p>
           </div>
         </div>
       </div>

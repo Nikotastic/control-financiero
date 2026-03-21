@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell,
 } from "recharts";
-import { Plus, Pencil, Trash2, X, Check, TrendingUp } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, TrendingUp, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../Components/ToastProvider";
@@ -32,6 +32,14 @@ const Ingresos = () => {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [paginaActual, setPaginaActual] = useState(1);
   const itemsPorPagina = 6;
+
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroCategoria, setFiltroCategoria] = useState("Todas");
+  const [filtroFecha, setFiltroFecha] = useState("");
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [busqueda, filtroCategoria, filtroFecha]);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -125,10 +133,22 @@ const Ingresos = () => {
     catch (e) { console.error(e); }
   };
 
+  const ingresosFiltrados = ingresos.filter(g => {
+    const matchBusqueda = (g.descripcion || "").toLowerCase().includes(busqueda.toLowerCase());
+    const matchCat = filtroCategoria === "Todas" ? true : g.categoria === filtroCategoria;
+    let matchFecha = true;
+    if (filtroFecha) {
+      const f = new Date(g.fecha.seconds * 1000);
+      const fechaLocal = f.toLocaleDateString('en-CA');
+      matchFecha = (fechaLocal === filtroFecha);
+    }
+    return matchBusqueda && matchCat && matchFecha;
+  });
+
+  const totalPaginas = Math.max(1, Math.ceil(ingresosFiltrados.length / itemsPorPagina));
   const indiceUltimo = paginaActual * itemsPorPagina;
   const indicePrimer = indiceUltimo - itemsPorPagina;
-  const ingresosPaginados = ingresos.slice(indicePrimer, indiceUltimo);
-  const totalPaginas = Math.ceil(ingresos.length / itemsPorPagina);
+  const ingresosPaginados = ingresosFiltrados.slice(indicePrimer, indiceUltimo);
 
   const datosPastel = CATEGORIAS_INGRESOS.map((cat) => ({
     name: cat,
@@ -234,9 +254,27 @@ const Ingresos = () => {
 
       {/* Tabla */}
       <div className="card">
-        <h3 className="card-title">Historial</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+          <h3 className="card-title" style={{ margin: 0 }}>Historial</h3>
+          <div className="filter-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="search-box" style={{ position: 'relative' }}>
+              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
+              <input type="text" className="field" placeholder="Buscar ingreso..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} style={{ paddingLeft: '35px', width: '200px' }} />
+            </div>
+            <select className="field-sm" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+              <option value="Todas">Todas las categorías</option>
+              {CATEGORIAS_INGRESOS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <div className="search-box" style={{ position: 'relative' }}>
+              <input type="date" className="field-sm" style={{ paddingLeft: '10px' }} value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} title="Filtrar por fecha exacta" />
+            </div>
+          </div>
+        </div>
+        
         {ingresos.length === 0 ? (
           <p className="empty-state">No hay ingresos registrados aún.</p>
+        ) : ingresosFiltrados.length === 0 ? (
+          <p className="empty-state">No hay resultados para tu búsqueda.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -287,18 +325,20 @@ const Ingresos = () => {
             {totalPaginas > 1 && (
               <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "1rem", alignItems: "center" }}>
                 <button 
-                  className="btn-ghost" 
+                  className="icon-btn ghost" 
                   disabled={paginaActual === 1} 
                   onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
-                >Anterior</button>
-                <span className="muted" style={{ fontSize: "0.9rem" }}>
-                  Página {paginaActual} de {totalPaginas}
+                  title="Anterior"
+                ><ChevronLeft size={16} /></button>
+                <span className="muted" style={{ fontSize: "0.85rem" }}>
+                  {paginaActual} / {totalPaginas}
                 </span>
                 <button 
-                  className="btn-ghost" 
+                  className="icon-btn ghost" 
                   disabled={paginaActual === totalPaginas} 
                   onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
-                >Siguiente</button>
+                  title="Siguiente"
+                ><ChevronRight size={16} /></button>
               </div>
             )}
           </div>

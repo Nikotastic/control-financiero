@@ -6,7 +6,7 @@ import {
 import { collection, onSnapshot, query, orderBy, where } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
 import { useAuth } from "../context/AuthContext";
-import { TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, Clock } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, Clock, Users, ChevronLeft, ChevronRight } from "lucide-react";
 import AIInsights from "./AIInsights";
 import EmailSummary from "./EmailSummary";
 
@@ -36,12 +36,11 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function Dashboard() {
   const { user } = useAuth();
   const [movimientos, setMovimientos] = useState([]);
-  const [datosArea, setDatosArea] = useState([]);
-  const [datosPastel, setDatosPastel] = useState([
-    { name: "Ingresos", value: 0 },
-    { name: "Gastos", value: 0 },
-  ]);
-  const [kpis, setKpis] = useState({ totalIngresos: 0, totalGastos: 0, balance: 0, inversiones: 0 });
+  const [inversionesData, setInversionesData] = useState([]);
+  const [deudasData, setDeudasData] = useState([]);
+  const [datosPastel, setDatosPastel] = useState([]);
+  const [kpis, setKpis] = useState({ totalIngresos: 0, totalGastos: 0, balance: 0, inversiones: 0, meDeben: 0, debo: 0 });
+  const [paginaActualRecientes, setPaginaActualRecientes] = useState(1);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -54,26 +53,6 @@ export default function Dashboard() {
       const ingresos = datos.filter((m) => m.tipo === "Ingreso").reduce((a, m) => a + m.monto, 0);
       const gastos   = datos.filter((m) => m.tipo === "Gasto").reduce((a, m) => a + m.monto, 0);
       setKpis((prev) => ({ ...prev, totalIngresos: ingresos, totalGastos: gastos, balance: ingresos - gastos }));
-      setDatosPastel([{ name: "Ingresos", value: ingresos }, { name: "Gastos", value: gastos }]);
-
-      const porMes = {};
-      const hoy = new Date();
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-        const lbl = d.toLocaleString("es-ES", { month: "short", year: "2-digit" });
-        porMes[key] = { key, label: lbl, Ingresos: 0, Gastos: 0 };
-      }
-
-      datos.forEach((m) => {
-        if (!m.fecha) return;
-        const f   = new Date(m.fecha.seconds * 1000);
-        const key = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}`;
-        if (!porMes[key]) return; // Solo incluimos los ultimos 6 meses
-        if (m.tipo === "Ingreso") porMes[key].Ingresos += m.monto;
-        else porMes[key].Gastos += m.monto;
-      });
-      setDatosArea(Object.values(porMes).sort((a, b) => a.key.localeCompare(b.key)));
     });
     return () => unsub();
   }, [user?.uid]);
@@ -82,17 +61,76 @@ export default function Dashboard() {
     if (!user?.uid) return;
     const q = query(collection(db, "inversiones"), where("uid", "==", user.uid));
     const unsub = onSnapshot(q, (snap) => {
-      const total = snap.docs.reduce((a, d) => a + (d.data().monto || 0), 0);
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const total = data.reduce((a, d) => a + (d.monto || 0), 0);
+      setInversionesData(data);
       setKpis((prev) => ({ ...prev, inversiones: total }));
     });
     return () => unsub();
   }, [user?.uid]);
 
-  const recientes = movimientos.slice(0, 5);
+  useEffect(() => {
+    if (!user?.uid) return;
+    const q = query(collection(db, "deudas"), where("uid", "==", user.uid));
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const meDeben = data.filter(d => d.tipo === "Me deben" && !d.pagado).reduce((a, d) => a + d.monto, 0);
+      const debo = data.filter(d => d.tipo === "Debo" && !d.pagado).reduce((a, d) => a + d.monto, 0);
+      setDeudasData(data);
+      setKpis((prev) => ({ ...prev, meDeben, debo }));
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
+  const allEvents = [
+    ...movimientos.map(m => ({ ...m, _module: "mov", tipoDesc: m.tipo, badge: m.categoria, tipoMonto: m.tipo })),
+    ...inversionesData.map(i => ({ ...i, _module: "inv", tipoDesc: "Inversión", badge: i.tipo, descripcion: `Inv: ${i.nombre}`, tipoMonto: "Gasto" })),
+    ...deudasData.map(d => ({ ...d, _module: "deuda", tipoDesc: d.tipo === "Me deben" ? "Préstamo" : "Nueva Deuda", badge: "Personal", descripcion: `Préstamo: ${d.persona}`, tipoMonto: d.tipo === "Me deben" ? "Gasto" : "Ingreso" }))
+  ].filter(e => e.fecha).sort((a,b) => b.fecha.seconds - a.fecha.seconds);
+
+  const ITEMS_POR_PAGINA = 5;
+  const totalPaginasRecientes = Math.max(1, Math.ceil(allEvents.length / ITEMS_POR_PAGINA));
+  const recientes = allEvents.slice(
+    (paginaActualRecientes - 1) * ITEMS_POR_PAGINA,
+    paginaActualRecientes * ITEMS_POR_PAGINA
+  );
+
+  const porMes = {};
+  const hoy = new Date();
+  for (let i = 5; i >= 0; i--) {
+     const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+     const lbl = d.toLocaleString("es-ES", { month: "short", year: "2-digit" });
+     porMes[key] = { key, label: lbl, Ingresos: 0, Gastos: 0, Inversiones: 0, Préstamos: 0, Deudas: 0 };
+  }
+  allEvents.forEach(e => {
+    const f = new Date(e.fecha.seconds * 1000);
+    const key = `${f.getFullYear()}-${String(f.getMonth() + 1).padStart(2, "0")}`;
+    if (!porMes[key]) return;
+    if (e._module === "mov") {
+       if (e.tipo === "Ingreso") porMes[key].Ingresos += e.monto;
+       else porMes[key].Gastos += e.monto;
+    } else if (e._module === "inv") {
+       porMes[key].Inversiones += e.monto;
+    } else if (e._module === "deuda") {
+       if (e.tipo === "Me deben") porMes[key].Préstamos += e.monto;
+       else porMes[key].Deudas += e.monto;
+    }
+  });
+  const datosAreaCalc = Object.values(porMes).sort((a, b) => a.key.localeCompare(b.key));
+
   const firstName = user?.displayName?.split(" ")[0] || "Usuario";
   const pctGastos = kpis.totalIngresos > 0
     ? Math.min((kpis.totalGastos / kpis.totalIngresos) * 100, 100) : 0;
   const barColor = pctGastos >= 90 ? "#f85a5a" : pctGastos >= 70 ? "#ff9f43" : "#00c896";
+
+  const datosPastelMerge = [
+    { name: "Ingresos", value: kpis.totalIngresos, color: "#00c896" },
+    { name: "Gastos", value: kpis.totalGastos, color: "#f85a5a" },
+    { name: "Inversiones", value: kpis.inversiones, color: "#a55eea" },
+    { name: "Me deben", value: kpis.meDeben || 0, color: "#54a0ff" },
+    { name: "Deudas", value: kpis.debo || 0, color: "#ff9f43" },
+  ].filter(d => d.value > 0);
 
   // Categoría con más gasto (para la IA)
   const gastosMap = {};
@@ -101,11 +139,18 @@ export default function Dashboard() {
   });
   const categoriaTopGasto = Object.entries(gastosMap).sort((a, b) => b[1] - a[1])[0]?.[0];
 
+  // Se excluyen los 16000 fijos para no descontarlos doble
+  const deduccionDeudas = Math.max(0, (kpis.meDeben || 0) - 16000);
+  
+  const balanceNeto = (kpis.totalIngresos - kpis.totalGastos) - deduccionDeudas;
+
   const financialData = {
     ingresos: kpis.totalIngresos,
     gastos: kpis.totalGastos,
-    balance: kpis.balance,
+    balance: balanceNeto,
     inversiones: kpis.inversiones,
+    meDeben: kpis.meDeben,
+    debo: kpis.debo,
     numMovimientos: movimientos.length,
     categoriaTopGasto,
     userName: user?.displayName || "Usuario",
@@ -150,14 +195,14 @@ export default function Dashboard() {
           </div>
           <ArrowDownRight size={18} className="kpi-trend kpi-trend-red" />
         </div>
-        <div className={`kpi-card ${kpis.balance >= 0 ? "kpi-green" : "kpi-red"}`}>
-          <div className={`kpi-icon-wrap ${kpis.balance >= 0 ? "kpi-icon-green" : "kpi-icon-red"}`}>
+        <div className={`kpi-card ${balanceNeto >= 0 ? "kpi-green" : "kpi-red"}`}>
+          <div className={`kpi-icon-wrap ${balanceNeto >= 0 ? "kpi-icon-green" : "kpi-icon-red"}`}>
             <Wallet size={20} />
           </div>
           <div className="kpi-body">
             <p className="kpi-label">Balance Neto</p>
-            <p className="kpi-value" style={{ color: kpis.balance >= 0 ? "var(--green)" : "var(--red)" }}>
-              {kpis.balance >= 0 ? "+" : ""}${kpis.balance.toLocaleString()}
+            <p className="kpi-value" style={{ color: balanceNeto >= 0 ? "var(--green)" : "var(--red)" }}>
+              {balanceNeto >= 0 ? "+" : ""}${balanceNeto.toLocaleString()}
             </p>
           </div>
         </div>
@@ -166,6 +211,20 @@ export default function Dashboard() {
           <div className="kpi-body">
             <p className="kpi-label">Inversiones</p>
             <p className="kpi-value">${kpis.inversiones.toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="kpi-card kpi-green">
+          <div className="kpi-icon-wrap kpi-icon-green"><Users size={20} /></div>
+          <div className="kpi-body">
+            <p className="kpi-label">Me deben</p>
+            <p className="kpi-value">${(kpis.meDeben || 0).toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="kpi-card kpi-red">
+          <div className="kpi-icon-wrap kpi-icon-red"><Users size={20} /></div>
+          <div className="kpi-body">
+            <p className="kpi-label">Deudas (Debo)</p>
+            <p className="kpi-value">${(kpis.debo || 0).toLocaleString()}</p>
           </div>
         </div>
       </div>
@@ -195,11 +254,11 @@ export default function Dashboard() {
       <div className="dash-charts-grid">
         <div className="card">
           <h3 className="card-title">Evolución mensual</h3>
-          {datosArea.length === 0 ? (
+          {datosAreaCalc.length === 0 ? (
             <p className="empty-state">Sin datos históricos aún.</p>
           ) : (
             <ResponsiveContainer width="100%" height={230}>
-              <AreaChart data={datosArea} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <AreaChart data={datosAreaCalc} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="gIngresos" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%"  stopColor="#00c896" stopOpacity={0.25} />
@@ -209,6 +268,18 @@ export default function Dashboard() {
                     <stop offset="5%"  stopColor="#f85a5a" stopOpacity={0.25} />
                     <stop offset="95%" stopColor="#f85a5a" stopOpacity={0} />
                   </linearGradient>
+                  <linearGradient id="gInversiones" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#a55eea" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#a55eea" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gPrestamos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#54a0ff" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#54a0ff" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="gDeudas" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor="#ff9f43" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#ff9f43" stopOpacity={0} />
+                  </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="label" tick={{ fill: "#8b949e", fontSize: 11 }} />
@@ -216,37 +287,38 @@ export default function Dashboard() {
                 <Tooltip content={<CustomTooltip />} />
                 <Area type="monotone" dataKey="Ingresos" stroke="#00c896" strokeWidth={2} fill="url(#gIngresos)" dot={false} />
                 <Area type="monotone" dataKey="Gastos"   stroke="#f85a5a" strokeWidth={2} fill="url(#gGastos)"   dot={false} />
+                <Area type="monotone" dataKey="Inversiones"   stroke="#a55eea" strokeWidth={2} fill="url(#gInversiones)"   dot={false} />
+                <Area type="monotone" dataKey="Préstamos"   stroke="#54a0ff" strokeWidth={2} fill="url(#gPrestamos)"   dot={false} />
+                <Area type="monotone" dataKey="Deudas"   stroke="#ff9f43" strokeWidth={2} fill="url(#gDeudas)"   dot={false} />
               </AreaChart>
             </ResponsiveContainer>
           )}
         </div>
 
         <div className="card">
-          <h3 className="card-title">Distribución</h3>
-          {datosPastel.every((d) => d.value === 0) ? (
+          <h3 className="card-title">Composición General</h3>
+          {datosPastelMerge.length === 0 ? (
             <p className="empty-state">Sin datos aún.</p>
           ) : (
             <>
               <ResponsiveContainer width="100%" height={180}>
                 <PieChart>
-                  <Pie data={datosPastel} cx="50%" cy="50%" innerRadius={52} outerRadius={80} paddingAngle={4} dataKey="value">
-                    <Cell fill="#00c896" />
-                    <Cell fill="#f85a5a" />
+                  <Pie data={datosPastelMerge} cx="50%" cy="50%" innerRadius={52} outerRadius={80} paddingAngle={4} dataKey="value">
+                    {datosPastelMerge.map((d, i) => (
+                      <Cell key={i} fill={d.color} />
+                    ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
-              <div className="pie-legend">
-                <div className="pie-legend-item">
-                  <span className="pie-dot" style={{ background: "#00c896" }} />
-                  <span>Ingresos</span>
-                  <strong className="amount-green">${kpis.totalIngresos.toLocaleString()}</strong>
-                </div>
-                <div className="pie-legend-item">
-                  <span className="pie-dot" style={{ background: "#f85a5a" }} />
-                  <span>Gastos</span>
-                  <strong className="amount-red">${kpis.totalGastos.toLocaleString()}</strong>
-                </div>
+              <div className="pie-legend" style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "10px", marginTop: "1rem" }}>
+                {datosPastelMerge.map((d, i) => (
+                  <div key={i} className="pie-legend-item">
+                    <span className="pie-dot" style={{ background: d.color }} />
+                    <span style={{ fontSize: "0.85rem" }}>{d.name}</span>
+                    <strong style={{ fontSize: "0.85rem", marginLeft: "4px" }}>${d.value.toLocaleString()}</strong>
+                  </div>
+                ))}
               </div>
             </>
           )}
@@ -259,7 +331,7 @@ export default function Dashboard() {
           <h3 className="card-title" style={{ margin: 0 }}>
             <Clock size={16} /> Actividad reciente
           </h3>
-          <span className="muted" style={{ fontSize: "0.8rem" }}>Últimos {recientes.length} movimientos</span>
+          <span className="muted" style={{ fontSize: "0.8rem" }}>{allEvents.length} movimientos en total</span>
         </div>
         {recientes.length === 0 ? (
           <p className="empty-state">No hay movimientos registrados.</p>
@@ -267,26 +339,46 @@ export default function Dashboard() {
           <div className="activity-list">
             {recientes.map((mov) => (
               <div key={mov.id} className="activity-item">
-                <div className={`activity-dot ${mov.tipo === "Ingreso" ? "dot-green" : "dot-red"}`} />
+                <div className={`activity-dot ${mov.tipoMonto === "Ingreso" ? "dot-green" : "dot-red"}`} />
                 <div className="activity-info">
                   <p className="activity-desc">{mov.descripcion}</p>
                   <p className="activity-date">
                     {new Date(mov.fecha.seconds * 1000).toLocaleDateString("es-ES", {
                       day: "numeric", month: "short", year: "numeric",
                     })}
-                    {mov.categoria && <span className="badge" style={{ marginLeft: 8 }}>{mov.categoria}</span>}
+                    {mov.badge && <span className="badge" style={{ marginLeft: 8 }}>{mov.badge}</span>}
                   </p>
                 </div>
                 <div className="activity-right">
-                  <span className={`activity-monto ${mov.tipo === "Ingreso" ? "amount-green" : "amount-red"}`}>
-                    {mov.tipo === "Ingreso" ? "+" : "-"}${mov.monto.toLocaleString()}
+                  <span className={`activity-monto ${mov.tipoMonto === "Ingreso" ? "amount-green" : "amount-red"}`}>
+                    {mov.tipoMonto === "Ingreso" ? "+" : "-"}${mov.monto.toLocaleString()}
                   </span>
-                  <span className={`activity-tipo ${mov.tipo === "Ingreso" ? "tipo-ingreso" : "tipo-gasto"}`}>
-                    {mov.tipo}
+                  <span className={`activity-tipo ${mov.tipoMonto === "Ingreso" ? "tipo-ingreso" : "tipo-gasto"}`}>
+                    {mov.tipoDesc}
                   </span>
                 </div>
               </div>
             ))}
+            
+            {totalPaginasRecientes > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "1rem", alignItems: "center" }}>
+                <button 
+                  className="icon-btn ghost" 
+                  disabled={paginaActualRecientes === 1} 
+                  onClick={() => setPaginaActualRecientes(prev => Math.max(prev - 1, 1))}
+                  title="Anterior"
+                ><ChevronLeft size={16} /></button>
+                <span className="muted" style={{ fontSize: "0.85rem" }}>
+                  {paginaActualRecientes} / {totalPaginasRecientes}
+                </span>
+                <button 
+                  className="icon-btn ghost" 
+                  disabled={paginaActualRecientes === totalPaginasRecientes} 
+                  onClick={() => setPaginaActualRecientes(prev => Math.min(prev + 1, totalPaginasRecientes))}
+                  title="Siguiente"
+                ><ChevronRight size={16} /></button>
+              </div>
+            )}
           </div>
         )}
       </div>

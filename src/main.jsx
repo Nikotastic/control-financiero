@@ -9,6 +9,7 @@ import Gastos       from "./Pages/Gastos";
 import Presupuesto  from "./Pages/Presupuesto";
 import Reportes     from "./Pages/Reportes";
 import Inversiones  from "./Pages/Inversiones";
+import Deudas       from "./Pages/Deudas";
 import Configuracion from "./Pages/Configuracion";
 import Login        from "./Pages/Login";
 import NotFound     from "./Pages/NotFound";
@@ -41,6 +42,7 @@ root.render(
           <Route path="/presupuesto"   element={<P Page={Presupuesto} />} />
           <Route path="/reportes"      element={<P Page={Reportes} />} />
           <Route path="/inversiones"   element={<P Page={Inversiones} />} />
+          <Route path="/deudas"        element={<P Page={Deudas} />} />
           <Route path="/configuracion" element={<P Page={Configuracion} />} />
           <Route path="*"              element={<NotFound />} />
         </Routes>

@@ -4,7 +4,7 @@ import {
   doc, Timestamp, query, orderBy, where
 } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
-import { Plus, Pencil, Trash2, X, Check, TrendingUp } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, TrendingUp, Search, ChevronLeft, ChevronRight } from "lucide-react";
 
 const TIPOS = ["Acciones", "Criptomonedas", "Bienes Raíces", "Fondos", "Otro"];
 const TIPO_COLOR = {
@@ -27,6 +27,16 @@ const Inversiones = () => {
   const [editMonto, setEditMonto] = useState("");
   const [editTipo, setEditTipo] = useState("Acciones");
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [paginaActual, setPaginaActual] = useState(1);
+  const itemsPorPagina = 6;
+
+  const [busqueda, setBusqueda] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState("Todas");
+  const [filtroFecha, setFiltroFecha] = useState("");
+
+  useEffect(() => {
+    setPaginaActual(1);
+  }, [busqueda, filtroTipo, filtroFecha]);
 
   useEffect(() => {
     const q = query(collection(db, "inversiones"), where("uid", "==", user.uid));
@@ -92,6 +102,23 @@ const Inversiones = () => {
     catch (e) { console.error(e); }
   };
 
+  const inversionesFiltradas = inversiones.filter(inv => {
+    const matchBusqueda = (inv.nombre || "").toLowerCase().includes(busqueda.toLowerCase());
+    const matchTipo = filtroTipo === "Todas" ? true : inv.tipo === filtroTipo;
+    let matchFecha = true;
+    if (filtroFecha) {
+      const f = new Date(inv.fecha.seconds * 1000);
+      const fechaLocal = f.toLocaleDateString('en-CA');
+      matchFecha = (fechaLocal === filtroFecha);
+    }
+    return matchBusqueda && matchTipo && matchFecha;
+  });
+
+  const totalPaginas = Math.max(1, Math.ceil(inversionesFiltradas.length / itemsPorPagina));
+  const indiceUltimo = paginaActual * itemsPorPagina;
+  const indicePrimer = indiceUltimo - itemsPorPagina;
+  const inversionesPaginadas = inversionesFiltradas.slice(indicePrimer, indiceUltimo);
+
   return (
     <div className="page-content">
       <div className="page-header">
@@ -136,9 +163,27 @@ const Inversiones = () => {
       )}
 
       <div className="card">
-        <h3 className="card-title">Portafolio</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+          <h3 className="card-title" style={{ margin: 0 }}>Portafolio</h3>
+          <div className="filter-row" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="search-box" style={{ position: 'relative' }}>
+              <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#8b949e' }} />
+              <input type="text" className="field" placeholder="Buscar posición..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} style={{ paddingLeft: '35px', width: '200px' }} />
+            </div>
+            <select className="field-sm" value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value)}>
+              <option value="Todas">Cualquier tipo</option>
+              {TIPOS.map((t) => <option key={t}>{t}</option>)}
+            </select>
+            <div className="search-box" style={{ position: 'relative' }}>
+              <input type="date" className="field-sm" style={{ paddingLeft: '10px' }} value={filtroFecha} onChange={(e) => setFiltroFecha(e.target.value)} title="Filtrar por fecha exacta" />
+            </div>
+          </div>
+        </div>
+
         {inversiones.length === 0 ? (
           <p className="empty-state">Sin inversiones registradas aún.</p>
+        ) : inversionesFiltradas.length === 0 ? (
+          <p className="empty-state">No hay resultados para tu búsqueda.</p>
         ) : (
           <div className="table-wrap">
             <table className="data-table">
@@ -146,7 +191,7 @@ const Inversiones = () => {
                 <tr><th>Fecha</th><th>Nombre</th><th>Tipo</th><th>Monto</th><th>Acciones</th></tr>
               </thead>
               <tbody>
-                {inversiones.map((inv) => (
+                {inversionesPaginadas.map((inv) => (
                   <tr key={inv.id}>
                     <td className="muted">{new Date(inv.fecha.seconds * 1000).toLocaleDateString()}</td>
                     {editandoId === inv.id ? (
@@ -174,6 +219,27 @@ const Inversiones = () => {
                 ))}
               </tbody>
             </table>
+            
+            {/* Controles de paginación */}
+            {totalPaginas > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: "10px", marginTop: "1rem", alignItems: "center" }}>
+                <button 
+                  className="icon-btn ghost" 
+                  disabled={paginaActual === 1} 
+                  onClick={() => setPaginaActual(prev => Math.max(prev - 1, 1))}
+                  title="Anterior"
+                ><ChevronLeft size={16} /></button>
+                <span className="muted" style={{ fontSize: "0.85rem" }}>
+                  {paginaActual} / {totalPaginas}
+                </span>
+                <button 
+                  className="icon-btn ghost" 
+                  disabled={paginaActual === totalPaginas} 
+                  onClick={() => setPaginaActual(prev => Math.min(prev + 1, totalPaginas))}
+                  title="Siguiente"
+                ><ChevronRight size={16} /></button>
+              </div>
+            )}
           </div>
         )}
       </div>

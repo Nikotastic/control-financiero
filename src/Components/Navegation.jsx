@@ -9,6 +9,7 @@ import {
   Settings,
   Menu,
   LogOut,
+  Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -84,6 +85,12 @@ export default function Navegation() {
           <Link to="/inversiones" className="nav-link">
             <TrendingUp size={20} />
             {mostrarMenu && <span>Inversiones</span>}
+          </Link>
+        </li>
+        <li>
+          <Link to="/deudas" className="nav-link">
+            <Users size={20} />
+            {mostrarMenu && <span>Deudas</span>}
           </Link>
         </li>
       </ul>

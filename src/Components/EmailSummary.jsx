@@ -19,13 +19,16 @@ ${"─".repeat(40)}
 
 INGRESOS:    $${financialData.ingresos.toLocaleString()}
 GASTOS:      $${financialData.gastos.toLocaleString()}
-BALANCE:     ${financialData.balance >= 0 ? "+" : ""}$${financialData.balance.toLocaleString()}
+ME DEBEN:    $${(financialData.meDeben || 0).toLocaleString()}
+DEUDAS MIAS: $${(financialData.debo || 0).toLocaleString()}
 INVERSIONES: $${financialData.inversiones.toLocaleString()}
 
 ${"─".repeat(40)}
+BALANCE LÍQUIDO ACTUAL: ${financialData.balance >= 0 ? "+" : ""}$${financialData.balance.toLocaleString()}
+
 ${financialData.balance >= 0
-    ? "¡Buen mes! Tu balance es positivo."
-    : "Atención: Tus gastos superaron tus ingresos este mes."}
+    ? "¡Excelente trabajo! Tienes saldo positivo y salud financiera buena."
+    : "Atención: Cuidado con las deudas o excesos, revisa tus gastos pronto."}
 
 Generado desde Control Financiero
 `.trim();
@@ -58,6 +61,8 @@ Generado desde Control Financiero
           mes:       mesNombre,
           ingresos:  `$${financialData.ingresos.toLocaleString()}`,
           gastos:    `$${financialData.gastos.toLocaleString()}`,
+          me_deben:  `$${(financialData.meDeben || 0).toLocaleString()}`,
+          debo:      `$${(financialData.debo || 0).toLocaleString()}`,
           balance:   `${financialData.balance >= 0 ? "+" : ""}$${financialData.balance.toLocaleString()}`,
           inversiones: `$${financialData.inversiones.toLocaleString()}`,
           estado:    financialData.balance >= 0 ? "Balance positivo" : "Atención: Balance negativo",
