@@ -11,6 +11,7 @@ import Reportes     from "./Pages/Reportes";
 import Inversiones  from "./Pages/Inversiones";
 import Configuracion from "./Pages/Configuracion";
 import Login        from "./Pages/Login";
+import NotFound     from "./Pages/NotFound";
 import { App }      from "./App";
 
 // Auth + Toast
@@ -41,6 +42,7 @@ root.render(
           <Route path="/reportes"      element={<P Page={Reportes} />} />
           <Route path="/inversiones"   element={<P Page={Inversiones} />} />
           <Route path="/configuracion" element={<P Page={Configuracion} />} />
+          <Route path="*"              element={<NotFound />} />
         </Routes>
       </ToastProvider>
     </AuthProvider>
