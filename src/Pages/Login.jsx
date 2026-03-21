@@ -18,6 +18,8 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
+      // Forzar que siempre pregunte qué cuenta usar
+      googleProvider.setCustomParameters({ prompt: "select_account" });
       await signInWithPopup(auth, googleProvider);
       navigate("/");
     } catch (err) {
