@@ -31,17 +31,26 @@ export default function AIInsights({ financialData }) {
       return;
     }
 
-    const prompt = `Eres un asesor financiero personal amigable y experto. Analiza estos datos financieros de un usuario y da UN consejo práctico y personalizado en 2-3 oraciones en español. Sé específico con los números.
+    const diasTranscurridos = new Date().getDate();
+    const dE = new Date();
+    const diasEnMes = new Date(dE.getFullYear(), dE.getMonth() + 1, 0).getDate();
 
-Datos del mes actual:
-- Ingresos totales: $${financialData.ingresos.toLocaleString()}
-- Gastos totales: $${financialData.gastos.toLocaleString()}
-- Balance neto: $${financialData.balance.toLocaleString()}
-- Inversiones registradas: $${financialData.inversiones.toLocaleString()}
-- Número de transacciones: ${financialData.numMovimientos}
-${financialData.categoriaTopGasto ? `- Categoría con más gasto: ${financialData.categoriaTopGasto}` : ""}
+    const prompt = `Eres una IA de control financiero predictivo nivel DIOS. Analiza estos datos. Dame UNA recomendación o alerta directa y matemática en 1 o 2 oraciones, respetando las siguientes reglas de comportamiento.
 
-Da solo el consejo, sin saludos ni titulares.`;
+Reglas:
+1) Si "Proyección" > "Ingresos" o si (Gastos en Ocio / Ingresos) > 0.25: ALERTA CRÍTICA ("Estás gastando mucho. Reduce ocio o te excederás a fin de mes").
+2) Si el "Nivel de ahorro" es < 20% de los Ingresos y el Score es bajo: "Estás comprometiendo tu futuro, tu nivel de ahorro está bajo el 20% mensual".
+3) Si el Score es alto (>=80): Elogia su puntuación e incítalo a mantener el ritmo.
+
+Datos en tiempo real (día ${diasTranscurridos} de ${diasEnMes}):
+- Ingresos: $${financialData.ingresos.toLocaleString()}
+- Gastos actuales: $${financialData.gastos.toLocaleString()}
+- Score Financiero global: ${financialData.score}/100
+- Proyección computarizada a fin de mes: $${Math.round(financialData.proyeccionMes || 0).toLocaleString()}
+- Destinado a Ocio: $${(financialData.gastoOcio || 0).toLocaleString()}
+- Destinado a Ahorro/Inversión: $${((financialData.gastoAhorro || 0) + (financialData.inversiones || 0)).toLocaleString()}
+
+Pasa directamente a la acción, sin saludos, con lenguaje moderno tipo fintech.`;
 
     try {
       const res = await fetch(

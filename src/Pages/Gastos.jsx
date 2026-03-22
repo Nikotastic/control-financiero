@@ -1,20 +1,20 @@
 import React, { useEffect, useState } from "react";
 import {
   collection, onSnapshot, query, where, orderBy,
-  addDoc, deleteDoc, updateDoc, doc, Timestamp,
+  addDoc, deleteDoc, updateDoc, doc, Timestamp, getDoc
 } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
-import { Plus, Pencil, Trash2, X, Check, HandCoins, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, HandCoins, Search, ChevronLeft, ChevronRight, AlertTriangle, Lock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../Components/ToastProvider";
 
 const CATEGORIAS = [
-  "Vivienda", "Alimentación", "Transporte", "Servicios", "Salud", 
-  "Educación", "Entretenimiento", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
+  "Vivienda", "Comida", "Transporte", "Servicios", "Salud", 
+  "Educación", "Ocio", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
 ];
 const COLORS = [
   "#f85a5a", "#ff9f43", "#00c896", "#4b7bec", "#a55eea", 
@@ -44,23 +44,48 @@ const Gastos = () => {
     setPaginaActual(1);
   }, [busqueda, filtroCategoria, filtroFecha]);
 
+  const [ingresosTotales, setIngresosTotales] = useState(0);
+  const [gastosTotales, setGastosTotales] = useState(0);
+  const [metaAhorro, setMetaAhorro] = useState(0);
+  const [deboTotal, setDeboTotal] = useState(0);
+
   useEffect(() => {
     if (!user?.uid) return;
-    const q = query(
-      collection(db, "movimientos"),
-      where("uid", "==", user.uid)
-    );
-    const unsub = onSnapshot(q, (snap) => {
+    const qMovs = query(collection(db, "movimientos"), where("uid", "==", user.uid));
+    const unsubMovs = onSnapshot(qMovs, (snap) => {
       const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      const gastosFiltered = data
-        .filter((d) => d.tipo === "Gasto" && d.fecha)
-        .sort((a, b) => b.fecha.seconds - a.fecha.seconds);
-      setGastos(gastosFiltered);
+      const gs = data.filter((d) => d.tipo === "Gasto" && d.fecha).sort((a, b) => b.fecha.seconds - a.fecha.seconds);
+      const ingresos = data.filter((d) => d.tipo === "Ingreso").reduce((a, b) => a + b.monto, 0);
+      const justGastos = gs.reduce((a, b) => a + b.monto, 0);
+      setGastos(gs);
+      setIngresosTotales(ingresos);
+      setGastosTotales(justGastos);
     });
-    return () => unsub();
+
+    const qDeudas = query(collection(db, "deudas"), where("uid", "==", user.uid));
+    const unsubDeudas = onSnapshot(qDeudas, (snap) => {
+      const debo = snap.docs.map(d=>d.data()).filter(d => d.tipo === "Debo" && !d.pagado).reduce((a,b)=>a+b.monto, 0);
+      setDeboTotal(debo);
+    });
+
+    const mesActual = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+    getDoc(doc(db, "meta_ahorro", `${user.uid}_${mesActual}`)).then(snap => {
+      if (snap.exists()) setMetaAhorro(snap.data().monto);
+    });
+
+    return () => { unsubMovs(); unsubDeudas(); };
   }, [user?.uid]);
 
   const total = gastos.reduce((acc, g) => acc + g.monto, 0);
+  
+  // Real prediction mathematics
+  const saldoNominal = ingresosTotales - gastosTotales;
+  const dineroDisponible = Math.max(0, saldoNominal - metaAhorro - deboTotal);
+
+  const dM = new Date();
+  const diasRestantesMes = new Date(dM.getFullYear(), dM.getMonth() + 1, 0).getDate() - dM.getDate() + 1;
+  const semanasRestantes = Math.max(1, Math.ceil(diasRestantesMes / 7));
+  const presupuestoSemanal = Math.floor(dineroDisponible / semanasRestantes);
 
   const agregarGasto = async () => {
     if (!descripcion || !monto) {
@@ -71,6 +96,12 @@ const Gastos = () => {
     if (isNaN(valMonto) || valMonto <= 0) {
       toast("El monto debe ser un valor positivo mayor a 0", "error");
       return;
+    }
+
+    // Sistema Anti-Errores (Limitar por plata real)
+    if (valMonto > dineroDisponible) {
+      const msj = ` ESTE GASTO ROMPE TU PLAN FINANCIERO.\nEl pago de $${valMonto.toLocaleString()} supera tu dinero real disponible hoy ($${dineroDisponible.toLocaleString()}).\n¿Estás seguro de comprometer tu futuro y añadir este gasto de todas maneras?`;
+      if (!window.confirm(msj)) return;
     }
 
     try {
@@ -166,18 +197,26 @@ const Gastos = () => {
         </button>
       </div>
 
-      <div className="stat-grid">
-        <div className="stat-card stat-red">
+      <div className="stat-grid" style={{ marginBottom: "1rem" }}>
+        <div className="stat-card stat-green">
           <HandCoins size={22} />
           <div>
-            <p className="stat-label">Total gastos</p>
-            <p className="stat-value">${total.toLocaleString()}</p>
+            <p className="stat-label"> Disponible REAL (Gastable)</p>
+            <p className="stat-value">${dineroDisponible.toLocaleString()}</p>
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-blue">
+          <Lock size={22} className="kpi-icon-blue" />
           <div>
-            <p className="stat-label">Registros</p>
-            <p className="stat-value">{gastos.length}</p>
+            <p className="stat-label"> Ahorro intocable / Comprometido</p>
+            <p className="stat-value">${(metaAhorro + deboTotal).toLocaleString()}</p>
+          </div>
+        </div>
+        <div className="stat-card stat-orange">
+          <AlertTriangle size={22} />
+          <div>
+            <p className="stat-label">Tu límite sugerido esta semana</p>
+            <p className="stat-value">${presupuestoSemanal.toLocaleString()}</p>
           </div>
         </div>
       </div>

@@ -14,8 +14,8 @@ const obtenerMesActual = () => {
 };
 
 const CATEGORIAS = [
-  "Vivienda", "Alimentación", "Transporte", "Servicios", "Salud", 
-  "Educación", "Entretenimiento", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
+  "Vivienda", "Comida", "Transporte", "Servicios", "Salud", 
+  "Educación", "Ocio", "Ropa", "Deudas", "Ahorro", "Seguros", "Otros"
 ];
 
 export default function Presupuesto() {
@@ -23,6 +23,8 @@ export default function Presupuesto() {
   const { toast } = useToast();
   const [montoPresupuesto, setMontoPresupuesto] = useState("");
   const [presupuestoActual, setPresupuestoActual] = useState(null);
+  const [montoMetaAhorro, setMontoMetaAhorro] = useState("");
+  const [metaAhorroActual, setMetaAhorroActual] = useState(null);
   const [totalGastos, setTotalGastos] = useState(0);
   const [totalIngresos, setTotalIngresos] = useState(0);
   const [categoria, setCategoria] = useState("Vivienda");
@@ -37,6 +39,9 @@ export default function Presupuesto() {
     if (!user?.uid) return;
     getDoc(doc(db, "presupuesto", `${user.uid}_${mesActual}`)).then((snap) => {
       if (snap.exists()) setPresupuestoActual(snap.data().monto);
+    });
+    getDoc(doc(db, "meta_ahorro", `${user.uid}_${mesActual}`)).then((snap) => {
+      if (snap.exists()) setMetaAhorroActual(snap.data().monto);
     });
   }, [mesActual, user.uid]);
 
@@ -90,6 +95,33 @@ export default function Presupuesto() {
     } catch (e) { 
       console.error(e); 
       toast("Error al eliminar el presupuesto", "error");
+    }
+  };
+
+  const guardarMetaAhorro = async () => {
+    if (!montoMetaAhorro) {
+      toast("Ingresa tu meta de ahorro ($)", "warning");
+      return;
+    }
+    const monto = parseFloat(montoMetaAhorro);
+    if (isNaN(monto) || monto <= 0) {
+      toast("La meta de ahorro debe ser mayor a 0", "error");
+      return;
+    }
+    await setDoc(doc(db, "meta_ahorro", `${user.uid}_${mesActual}`), { monto, uid: user.uid });
+    setMetaAhorroActual(monto);
+    toast("¡Meta de ahorro establecida! A por ella 🚀", "success");
+    setMontoMetaAhorro("");
+  };
+
+  const eliminarMetaAhorro = async () => {
+    try {
+      await deleteDoc(doc(db, "meta_ahorro", `${user.uid}_${mesActual}`));
+      setMetaAhorroActual(null);
+      toast("Meta de ahorro eliminada", "info");
+    } catch (e) {
+      console.error(e);
+      toast("Error al eliminar la meta de ahorro", "error");
     }
   };
 
@@ -261,6 +293,38 @@ export default function Presupuesto() {
               );
             })}
           </div>
+        </div>
+
+        {/* --- META DE AHORRO MENSUAL --- */}
+        <div className="card">
+          <h3 className="card-title">Meta de ahorro mensual</h3>
+          <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "1rem" }}>Define cuánto quieres ahorrar este mes (ej. quiero ahorrar 100k)</p>
+          <div className="form-stack">
+            <input className="field" type="number" min="0" step="0.01" onKeyDown={(e) => { if (e.key === '-' || e.key === 'e') e.preventDefault(); }} placeholder="Meta ($)" value={montoMetaAhorro} onChange={(e) => setMontoMetaAhorro(e.target.value)} />
+            <button className="btn-success" style={{ background: "#00c896", border: "none", color: "white", padding: "10px", borderRadius: "10px", cursor: "pointer", fontWeight: "600" }} onClick={guardarMetaAhorro}>Establecer meta</button>
+            {metaAhorroActual !== null && (
+              <button className="btn-icon-danger" onClick={eliminarMetaAhorro} title="Quitar meta de ahorro">
+                <Trash2 size={16} /> Quitar meta
+              </button>
+            )}
+          </div>
+          
+          {metaAhorroActual !== null && (
+            <div className="budget-status" style={{ marginTop: "1.5rem" }}>
+              <div className="budget-stats">
+                <span>Meta a alcanzar: <strong className="amount-green">${metaAhorroActual.toLocaleString()}</strong></span>
+                <span>Margen disponible según balance: <strong>${Math.max(0, totalIngresos - totalGastos).toLocaleString()}</strong></span>
+              </div>
+              <div className="progress-bar-bg" style={{ marginTop: "10px" }}>
+                <div className="progress-bar-fill" style={{ width: `${Math.min(((totalIngresos - totalGastos) / metaAhorroActual) * 100, 100)}%`, background: (totalIngresos - totalGastos) >= metaAhorroActual ? "var(--green)" : "var(--blue)" }} />
+              </div>
+              <p className="dash-health-hint" style={{ marginTop: "8px", fontSize: "0.85rem" }}>
+                {(totalIngresos - totalGastos) >= metaAhorroActual 
+                  ? "🎉 ¡Felicidades! Si guardas tu margen, llegarás a la meta."
+                  : "Estás gastando mucho. Reduce tus gastos para llegar a la reserva que esperas."}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>

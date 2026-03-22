@@ -6,7 +6,7 @@ import {
 import { collection, onSnapshot, query, orderBy, where } from "firebase/firestore";
 import { db } from "../firebaseConfig/firebase";
 import { useAuth } from "../context/AuthContext";
-import { TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, Clock, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { TrendingUp, TrendingDown, Wallet, ArrowUpRight, ArrowDownRight, Clock, Users, ChevronLeft, ChevronRight, AlertTriangle } from "lucide-react";
 import AIInsights from "./AIInsights";
 import EmailSummary from "./EmailSummary";
 
@@ -139,10 +139,32 @@ export default function Dashboard() {
   });
   const categoriaTopGasto = Object.entries(gastosMap).sort((a, b) => b[1] - a[1])[0]?.[0];
 
-  // Se excluyen los 16000 fijos para no descontarlos doble
   const deduccionDeudas = Math.max(0, (kpis.meDeben || 0) - 16000);
-  
   const balanceNeto = (kpis.totalIngresos - kpis.totalGastos) - deduccionDeudas;
+
+  // Proyección y Score
+  const dM = new Date();
+  const diasTranscurridos = dM.getDate();
+  const diasEnMes = new Date(dM.getFullYear(), dM.getMonth() + 1, 0).getDate();
+  const gastoPromedioDiario = diasTranscurridos > 0 ? kpis.totalGastos / diasTranscurridos : 0;
+  const proyeccionMes = gastoPromedioDiario * diasEnMes;
+  const excesoProyectado = Math.max(0, proyeccionMes - kpis.totalIngresos);
+
+  const gastoOcio = gastosMap["Ocio"] || 0;
+  const gastoAhorro = gastosMap["Ahorro"] || 0;
+
+  let score = 100;
+  if (excesoProyectado > 0) score -= 20;
+  if (kpis.debo > balanceNeto) score -= 30;
+  if (kpis.totalIngresos > 0) {
+    const tasaAhorro = (gastoAhorro + kpis.inversiones) / kpis.totalIngresos;
+    if (tasaAhorro >= 0.20) score += 10;
+    else if (tasaAhorro === 0) score -= 15;
+    const tasaOcio = gastoOcio / kpis.totalIngresos;
+    if (tasaOcio > 0.25) score -= 15;
+  }
+  score = Math.min(100, Math.max(0, score));
+  const scoreColor = score >= 85 ? "var(--green)" : score >= 50 ? "var(--orange)" : "var(--red)";
 
   const financialData = {
     ingresos: kpis.totalIngresos,
@@ -154,6 +176,10 @@ export default function Dashboard() {
     numMovimientos: movimientos.length,
     categoriaTopGasto,
     userName: user?.displayName || "Usuario",
+    proyeccionMes,
+    gastoOcio,
+    gastoAhorro,
+    score
   };
 
   return (
@@ -229,24 +255,53 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Barra de salud ── */}
-      <div className="dash-health-bar-card">
-        <div className="dash-health-header">
-          <span className="card-title" style={{ margin: 0 }}>Ratio gastos / ingresos</span>
-          <span className="dash-health-pct" style={{ color: barColor }}>{pctGastos.toFixed(0)}%</span>
+      {/* ── Predicción y Score Financiero ── */}
+      <div className="dash-charts-grid" style={{ marginBottom: "1rem" }}>
+        {/* SCORE */}
+        <div className="dash-health-bar-card" style={{ flex: 1 }}>
+          <div className="dash-health-header" style={{ marginBottom: "0.5rem" }}>
+            <span className="card-title" style={{ margin: 0 }}>Score Financiero</span>
+            <span className="dash-health-pct" style={{ color: scoreColor }}>{score} / 100</span>
+          </div>
+          <div className="progress-bar-bg" style={{ height: 10 }}>
+            <div className="progress-bar-fill" style={{ width: `${score}%`, background: scoreColor }} />
+          </div>
+          <p className="dash-health-hint" style={{ marginTop: "10px" }}>
+            {score >= 85 ? "🟢 Finanzas Nivel Dios. Administras perfecto." : score >= 50 ? "🟠 Regular. Puedes optimizar tu dinero." : "🔴 Peligro: Finanzas en riesgo."}
+          </p>
         </div>
-        <div className="progress-bar-bg" style={{ height: 10, marginTop: 10 }}>
-          <div className="progress-bar-fill" style={{ width: `${pctGastos}%`, background: barColor }} />
+
+        {/* PROYECCION */}
+        <div className="dash-health-bar-card" style={{ flex: 1 }}>
+          <div className="dash-health-header" style={{ marginBottom: "0.5rem" }}>
+            <span className="card-title" style={{ margin: 0 }}>Proyección al fin de mes</span>
+            <span className="dash-health-pct" style={{ color: excesoProyectado > 0 ? "var(--red)" : "var(--green)" }}>
+              {excesoProyectado > 0 ? " En sobregiro" : " Buen ritmo"}
+            </span>
+          </div>
+          <p className="dash-health-hint" style={{ margin: 0, fontSize: "0.9rem", color: "var(--text-color)" }}>
+            A este ritmo gastarás <strong>${proyeccionMes.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong> este mes.
+          </p>
+          <p className="dash-health-hint" style={{ marginTop: "5px", fontSize: "0.85rem", color: excesoProyectado > 0 ? "var(--red)" : "var(--green)" }}>
+            {excesoProyectado > 0 ? ` Proyectas rebasar tus ingresos por $${excesoProyectado.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "Terminarás el mes por debajo de tus ingresos."}
+          </p>
         </div>
-        <p className="dash-health-hint">
-          {pctGastos >= 90 ? " Gastos muy altos — revisa tus categorías de gasto."
-            : pctGastos >= 70 ? " Gastos moderados — hay margen de mejora."
-            : " Excelente — tus ingresos superan tus gastos cómodamente."}
-        </p>
       </div>
 
       {/* ── Alertas + IA (fila lateral) ── */}
       <div className="dash-side-grid">
+        {kpis.debo > balanceNeto && (
+          <div className="ai-card" style={{ borderColor: 'var(--red)', background: 'rgba(248, 90, 90, 0.05)' }}>
+            <div className="ai-card-header" style={{ borderBottomColor: 'rgba(248, 90, 90, 0.1)' }}>
+               <div className="ai-title"><AlertTriangle size={18} color="var(--red)"/> <strong style={{color: 'var(--red)'}}>Alerta Crítica de Deuda</strong></div>
+            </div>
+            <div className="ai-body">
+              <p className="ai-insight-text" style={{ color: 'var(--red)' }}>
+                Tus deudas (<strong>${(kpis.debo || 0).toLocaleString()}</strong>) superan toda tu plata actual disponible (<strong>${balanceNeto.toLocaleString()}</strong>). Estás prestado por encima de tu capacidad de pago inmediata. ¡Cuidado!
+              </p>
+            </div>
+          </div>
+        )}
         <AIInsights financialData={financialData} />
       </div>
 
