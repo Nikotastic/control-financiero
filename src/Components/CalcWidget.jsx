@@ -12,9 +12,6 @@ const BOTONES = [
 export default function CalcWidget() {
   const [open, setOpen] = useState(false);
   const [display, setDisplay] = useState("0");
-  const [prevVal, setPrevVal] = useState(null);
-  const [operator, setOperator] = useState(null);
-  const [waitingForOperand, setWaitingForOperand] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -28,60 +25,61 @@ export default function CalcWidget() {
   const handleBtn = (val) => {
     if (val === "C") {
       setDisplay("0");
-      setPrevVal(null);
-      setOperator(null);
-      setWaitingForOperand(false);
       return;
     }
     if (val === "⌫") {
+      if (display === "Error" || display === "Infinity") { setDisplay("0"); return; }
       setDisplay((d) => (d.length > 1 ? d.slice(0, -1) : "0"));
       return;
     }
     if (val === "+/-") {
-      setDisplay((d) => (parseFloat(d) * -1).toString());
+      setDisplay((d) => {
+        try {
+          const res = new Function('return ' + d.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-"))();
+          return String(res * -1);
+        } catch { return d; }
+      });
       return;
     }
     if (val === "%") {
-      setDisplay((d) => (parseFloat(d) / 100).toString());
-      return;
-    }
-    if (["÷", "×", "−", "+"].includes(val)) {
-      setPrevVal(parseFloat(display));
-      setOperator(val);
-      setWaitingForOperand(true);
+      setDisplay((d) => {
+        try {
+          const res = new Function('return ' + d.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-"))();
+          return String(res / 100);
+        } catch { return d; }
+      });
       return;
     }
     if (val === "=") {
-      if (operator && prevVal !== null) {
-        const curr = parseFloat(display);
-        let result = curr;
-        switch (operator) {
-          case "+": result = prevVal + curr; break;
-          case "−": result = prevVal - curr; break;
-          case "×": result = prevVal * curr; break;
-          case "÷": result = curr !== 0 ? prevVal / curr : "Error"; break;
-        }
-        setDisplay(typeof result === "number" ? parseFloat(result.toFixed(10)).toString() : result);
-        setPrevVal(null);
-        setOperator(null);
-        setWaitingForOperand(false);
+      if (display === "Error") return;
+      try {
+        const expression = display.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-");
+        let result = new Function('return ' + expression)();
+        if (!Number.isFinite(result) || Number.isNaN(result)) throw new Error("");
+        setDisplay(String(parseFloat(result.toFixed(8))));
+      } catch (e) {
+        setDisplay("Error");
       }
       return;
     }
-    if (val === ".") {
-      if (waitingForOperand) { setDisplay("0."); setWaitingForOperand(false); return; }
-      if (!display.includes(".")) setDisplay((d) => d + ".");
-      return;
-    }
-    if (waitingForOperand) {
-      setDisplay(val);
-      setWaitingForOperand(false);
-    } else {
-      setDisplay((d) => (d === "0" ? val : d.length < 12 ? d + val : d));
-    }
+    
+    // Concatenar
+    const isOp = ["÷", "×", "−", "+", "."].includes(val);
+    setDisplay((d) => {
+      if (d === "Error" || d === "Infinity" || d === "NaN") return isOp ? "0" + val : val;
+      const lastChar = d.slice(-1);
+      const isLastOp = ["÷", "×", "−", "+", "."].includes(lastChar);
+      
+      if (isOp && isLastOp) {
+         return d.slice(0, -1) + val;
+      }
+      
+      if (d === "0" && !isOp) return val;
+      return d.length < 25 ? d + val : d;
+    });
   };
 
-  const isOp = (v) => ["÷","×","−","+"].includes(v);
+  const isOpUser = (v) => ["÷","×","−","+"].includes(v);
 
   return (
     <div className="calc-floating" ref={ref}>
@@ -91,15 +89,14 @@ export default function CalcWidget() {
             <span>Calculadora</span>
             <button className="calc-close" onClick={() => setOpen(false)}><X size={15} /></button>
           </div>
-          <div className="calc-display">
-            {operator && <span className="calc-op-hint">{prevVal} {operator}</span>}
-            <span className="calc-value">{display.length > 10 ? parseFloat(parseFloat(display).toPrecision(8)).toString() : display}</span>
+          <div className="calc-display" style={{ overflowX: "auto", display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "10px", wordBreak: "break-all" }}>
+            <span className="calc-value">{display}</span>
           </div>
           <div className="calc-grid">
             {BOTONES.flat().map((btn, i) => (
               <button
                 key={i}
-                className={`calc-btn ${btn === "C" ? "calc-btn--clear" : ""} ${isOp(btn) ? "calc-btn--op" : ""} ${btn === "=" ? "calc-btn--eq" : ""}`}
+                className={`calc-btn ${btn === "C" ? "calc-btn--clear" : ""} ${isOpUser(btn) ? "calc-btn--op" : ""} ${btn === "=" ? "calc-btn--eq" : ""}`}
                 onClick={() => handleBtn(btn)}
               >
                 {btn}
