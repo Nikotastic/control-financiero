@@ -22,6 +22,28 @@ export default function CalcWidget() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (e) => {
+      const key = e.key;
+      let val = null;
+      if (/^[0-9\.]$/.test(key)) val = key;
+      else if (key === '+') val = "+";
+      else if (key === '-') val = "−";
+      else if (key === '*' || key.toLowerCase() === 'x') val = "×";
+      else if (key === '/') { e.preventDefault(); val = "÷"; }
+      else if (key === 'Enter' || key === '=') { e.preventDefault(); val = "="; }
+      else if (key === 'Backspace') { e.preventDefault(); val = "⌫"; }
+      else if (key === 'Escape') val = "C";
+      
+      if (val) {
+        handleBtn(val);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, display]);
+
   const handleBtn = (val) => {
     if (val === "C") {
       setDisplay("0");

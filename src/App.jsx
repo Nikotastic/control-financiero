@@ -3,6 +3,7 @@ import Dashboard from "./Components/Dashboard";
 import Navegation from "./Components/Navegation";
 import AlertCenter from "./Components/AlertCenter";
 import CalcWidget from "./Components/CalcWidget";
+import AICoachWidget from "./Components/AICoachWidget";
 
 export function App({ children }) {
   return (
@@ -21,6 +22,7 @@ export function App({ children }) {
 
         {/* Calculadora flotante */}
         <CalcWidget />
+        <AICoachWidget />
       </main>
     </div>
   );
