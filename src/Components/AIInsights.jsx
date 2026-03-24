@@ -54,29 +54,34 @@ Pasa directamente a la acción, sin saludos, con lenguaje moderno tipo fintech.`
 
     try {
       const res = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+        "https://openrouter.ai/api/v1/chat/completions",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "HTTP-Referer": window.location.origin,
+            "X-Title": "Control Financiero",
+            "Content-Type": "application/json"
+          },
           body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { maxOutputTokens: 150, temperature: 0.7 },
-          }),
+            model: "google/gemini-2.0-flash-001",
+            messages: [{ role: "user", content: prompt }]
+          })
         }
       );
 
       if (!res.ok) {
         let msg = "Ups, algo falló al conectar con la IA.";
-        if (res.status === 400) msg = "La clave API es inválida o tiene un formato incorrecto.";
-        if (res.status === 403 || res.status === 401) msg = "La clave API no tiene los permisos necesarios.";
-        if (res.status === 429) msg = "Has alcanzado el límite consultas de la IA. Por favor, intenta de nuevo en un minuto.";
-        if (res.status >= 500) msg = "Los servidores de Google Gemini están teniendo problemas. Intenta más tarde.";
+        if (res.status === 400) msg = "La petición fue rechazada. Verifica la clave API o el formato.";
+        if (res.status === 401 || res.status === 403) msg = "La clave de OpenRouter es inválida o no tiene fondos.";
+        if (res.status === 429) msg = "Has alcanzado el límite de consultas de OpenRouter.";
+        if (res.status >= 500) msg = "Los servidores de OpenRouter están teniendo problemas.";
         throw new Error(msg);
       }
 
       const data = await res.json();
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!text) throw new Error("Respuesta vacía");
+      const text = data.choices?.[0]?.message?.content;
+      if (!text) throw new Error("Respuesta vacía o formato inesperado");
       setInsight(text.trim());
       setUsado(true);
     } catch (err) {

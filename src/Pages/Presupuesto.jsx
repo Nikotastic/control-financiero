@@ -27,6 +27,7 @@ export default function Presupuesto() {
   const [metaAhorroActual, setMetaAhorroActual] = useState(null);
   const [totalGastos, setTotalGastos] = useState(0);
   const [totalIngresos, setTotalIngresos] = useState(0);
+  const [totalMeDeben, setTotalMeDeben] = useState(0);
   const [categoria, setCategoria] = useState("Vivienda");
   const [montoCategoria, setMontoCategoria] = useState("");
   const [presupuestosCategoria, setPresupuestosCategoria] = useState([]);
@@ -70,6 +71,18 @@ export default function Presupuesto() {
     });
     return () => unsub();
   }, [mesActual, user.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(query(collection(db, "deudas"), where("uid", "==", user.uid)), (snap) => {
+      const all = snap.docs.map((d) => d.data());
+      const meDeben = all.filter((d) => d.tipo === "Me deben" && !d.pagado).reduce((acc, curr) => acc + curr.monto, 0);
+      setTotalMeDeben(meDeben);
+    });
+    return () => unsub();
+  }, [user.uid]);
+  const deduccionDeudas = Math.max(0, totalMeDeben - 16000);
+  const margenBolsillo = Math.max(0, totalIngresos - totalGastos - deduccionDeudas);
 
   const guardarPresupuesto = async () => {
     if (!montoPresupuesto) {
@@ -313,15 +326,15 @@ export default function Presupuesto() {
             <div className="budget-status" style={{ marginTop: "1.5rem" }}>
               <div className="budget-stats">
                 <span>Meta a alcanzar: <strong className="amount-green">${metaAhorroActual.toLocaleString()}</strong></span>
-                <span>Margen disponible según balance: <strong>${Math.max(0, totalIngresos - totalGastos).toLocaleString()}</strong></span>
+                <span>Plata real en el bolsillo (Margen): <strong>${margenBolsillo.toLocaleString()}</strong></span>
               </div>
               <div className="progress-bar-bg" style={{ marginTop: "10px" }}>
-                <div className="progress-bar-fill" style={{ width: `${Math.min(((totalIngresos - totalGastos) / metaAhorroActual) * 100, 100)}%`, background: (totalIngresos - totalGastos) >= metaAhorroActual ? "var(--green)" : "var(--blue)" }} />
+                <div className="progress-bar-fill" style={{ width: `${Math.min((margenBolsillo / metaAhorroActual) * 100, 100)}%`, background: margenBolsillo >= metaAhorroActual ? "var(--green)" : "var(--blue)" }} />
               </div>
               <p className="dash-health-hint" style={{ marginTop: "8px", fontSize: "0.85rem" }}>
-                {(totalIngresos - totalGastos) >= metaAhorroActual 
-                  ? "🎉 ¡Felicidades! Si guardas tu margen, llegarás a la meta."
-                  : "Estás gastando mucho. Reduce tus gastos para llegar a la reserva que esperas."}
+                {margenBolsillo >= metaAhorroActual 
+                  ? " ¡Felicidades! Tienes suficiente dinero en el bolsillo para cumplir tu meta."
+                  : "Cuidado: Tu dinero físico actual no alcanza para cubrir tu meta. ¡Recupera lo prestado!"}
               </p>
             </div>
           )}
